@@ -1,0 +1,27 @@
+{
+  "name": "yara-language",
+  "displayName": "Yara",
+  "description": "Syntax highlighting for the Yara programming language",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "yara",
+        "aliases": ["Yara", "yara"],
+        "extensions": [".yara"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "yara",
+        "scopeName": "source.yara",
+        "path": "./syntaxes/yara.tmLanguage.json"
+      }
+    ]
+  }
+}

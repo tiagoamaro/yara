@@ -68,6 +68,10 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 - `objects/` — `class` usage.
 - `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace.
 
+## Editor support
+
+`editors/vscode-yara/` is a minimal VS Code extension providing syntax highlighting for `.yara` files (TextMate grammar only — no language server). See its `README.md` for install instructions.
+
 ## Running
 
 ```
