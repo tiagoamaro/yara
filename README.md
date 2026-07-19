@@ -10,7 +10,7 @@ Yara is a learning-focused programming language: strongly typed, compiled, with 
 
 ## Status
 
-Interpreter-first milestone complete: lexer, parser, typechecker, and tree-walk interpreter all working, `yara run <file>` executes real `.yara` programs. See `CLAUDE.md` for the current project map and each subfolder's `CLAUDE.md` for stage-specific status.
+Interpreter-first milestone complete and then some: lexer, parser, typechecker, and tree-walk interpreter all working, `yara run <file>` executes real `.yara` programs. Since the initial milestone: unary negation, `if`/`elsif`/`else` as a function's tail expression, file `import`, an `Array` type (`IntArray`/`FloatArray`/`BoolArray`/`StringArray` with indexing and `len`/`push`/`pop`/`get`/`set`), and `class` declarations (no inheritance). See `CLAUDE.md` for the current project map and each subfolder's `CLAUDE.md` for stage-specific status.
 
 ## Syntax preview
 
@@ -25,6 +25,24 @@ y: Float = 5.0 # explicit annotation
 if x > 0
   print("positive")
 end
+
+xs: IntArray = [1, 2, 3]
+push(xs, 4)
+print(xs[0])
+
+import "helper"   # splices helper.yara's top-level declarations in
+
+class Hello
+  const PI: Float = 3.14159
+  count: Integer
+
+  def initializer(number: Int)
+    count = number
+  end
+end
+
+h = Hello.new(5)
+print(h.count)
 ```
 
 Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`/`String` are interchangeable.
@@ -35,8 +53,16 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 2. AST + parser
 3. Typechecker
 4. Tree-walk interpreter
-5. Examples (functions, base types)
-6. Later: native compilation (LLVM/Cranelift) or C transpile
+5. Arrays, imports, classes
+6. Later: native compilation (LLVM/Cranelift) or C transpile; class inheritance/static methods; opt-in pointers
+
+## Examples
+
+`examples/` has runnable `.yara` programs, organized by theme:
+- Top-level: language-feature smoke tests (`hello.yara`, `functions.yara`, `types.yara`, `control_flow.yara`, `loops.yara`, `recursion.yara`, `constants.yara`, `kitchen_sink.yara`).
+- `data_structures/` — list, stack, queue, linked list, binary tree, graph (arena-style, built on arrays).
+- `objects/` — `class` usage.
+- `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace.
 
 ## Running
 
