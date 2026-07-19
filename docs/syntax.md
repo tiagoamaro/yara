@@ -56,6 +56,19 @@ Splices the imported file's top-level declarations into this file at typecheck/i
 
 `-x` (negation, `Integer`/`Float` only). No `!`/`not` yet.
 
+## Arrays
+
+```
+xs: IntArray = [1, 2, 3]   # IntArray, FloatArray, BoolArray, StringArray
+push(xs, 4)
+print(xs[0])               # indexing
+print(len(xs))
+set(xs, 0, 99)
+print(pop(xs))              # removes and returns the last element
+```
+
+No generic `Array<T>` — each element type has its own concrete annotation name. No array-of-array type yet, so nested collections (e.g. adjacency lists) aren't representable; see `examples/data_structures/graph.yara` for a workaround (edge list instead of adjacency list). Arrays have reference semantics: passing one into a function shares the same backing storage, so mutations (`push`/`set`/`pop`) inside the function are visible to the caller.
+
 ## Comments
 
 `# line comment`

@@ -415,6 +415,28 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+        let expr = self.parse_primary_base()?;
+        self.parse_index_suffix(expr)
+    }
+
+    /// Wraps `expr` in `Expr::Index` for each trailing `[expr]`, allowing chained
+    /// indexing (e.g. a future 2D-array `grid[i][j]`).
+    fn parse_index_suffix(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
+        while self.check(&TokenKind::LBracket) {
+            let bracket_tok = self.advance();
+            let index = self.parse_expr()?;
+            self.expect(&TokenKind::RBracket, "`]`")?;
+            expr = Expr::Index {
+                array: Box::new(expr),
+                index: Box::new(index),
+                line: bracket_tok.line,
+                column: bracket_tok.column,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_primary_base(&mut self) -> Result<Expr, ParseError> {
         let tok = self.peek().clone();
         match tok.kind {
             TokenKind::Int(value) => {
@@ -493,6 +515,26 @@ impl Parser {
                 let expr = self.parse_expr()?;
                 self.expect(&TokenKind::RParen, "`)`")?;
                 Ok(expr)
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let mut elements = Vec::new();
+                if !self.check(&TokenKind::RBracket) {
+                    loop {
+                        elements.push(self.parse_expr()?);
+                        if self.check(&TokenKind::Comma) {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                self.expect(&TokenKind::RBracket, "`]`")?;
+                Ok(Expr::ArrayLit {
+                    elements,
+                    line: tok.line,
+                    column: tok.column,
+                })
             }
             _ => Err(ParseError {
                 message: format!("unexpected token {:?}", tok.kind),
@@ -664,6 +706,25 @@ mod tests {
                 ));
             }
             other => panic!("expected VarDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_array_literal_and_index() {
+        let stmts = parse("xs = [1, 2, 3]\ny = xs[0]");
+        match &stmts[0] {
+            Stmt::VarDecl {
+                value: Expr::ArrayLit { elements, .. },
+                ..
+            } => assert_eq!(elements.len(), 3),
+            other => panic!("expected ArrayLit VarDecl, got {other:?}"),
+        }
+        match &stmts[1] {
+            Stmt::VarDecl {
+                value: Expr::Index { .. },
+                ..
+            } => {}
+            other => panic!("expected Index VarDecl, got {other:?}"),
         }
     }
 

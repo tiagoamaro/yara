@@ -1,8 +1,10 @@
 //! Tree-walk evaluator executing a typechecked AST.
 
 use crate::ast::{BinOp, Expr, Stmt, UnOp};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -11,6 +13,11 @@ pub enum Value {
     Boolean(bool),
     String(String),
     Nil,
+    /// Reference semantics (like Python lists): cloning a `Value::Array` shares
+    /// the same backing storage, so passing an array into a function and
+    /// mutating it there (`push`/`set`) is visible to the caller — needed for
+    /// arena-style linked lists/trees/graphs built out of arrays of indices.
+    Array(Rc<RefCell<Vec<Value>>>),
 }
 
 impl fmt::Display for Value {
@@ -21,6 +28,16 @@ impl fmt::Display for Value {
             Value::Boolean(v) => write!(f, "{v}"),
             Value::String(v) => write!(f, "{v}"),
             Value::Nil => write!(f, "nil"),
+            Value::Array(items) => {
+                write!(f, "[")?;
+                for (i, item) in items.borrow().iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }
@@ -312,6 +329,55 @@ impl Interpreter {
                     call_stack: self.call_stack.clone(),
                 }),
             },
+            Expr::ArrayLit { elements, .. } => {
+                let mut values = Vec::with_capacity(elements.len());
+                for e in elements {
+                    values.push(self.eval_expr(e)?);
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(values))))
+            }
+            Expr::Index {
+                array,
+                index,
+                line,
+                column,
+            } => {
+                let array_val = self.eval_expr(array)?;
+                let idx = self.eval_int(index, *line, *column)?;
+                self.array_get(&array_val, idx, *line, *column)
+            }
+        }
+    }
+
+    fn array_get(
+        &self,
+        array_val: &Value,
+        idx: i64,
+        line: usize,
+        column: usize,
+    ) -> Result<Value, RuntimeError> {
+        match array_val {
+            Value::Array(items) => {
+                let items = items.borrow();
+                usize::try_from(idx)
+                    .ok()
+                    .and_then(|i| items.get(i).cloned())
+                    .ok_or_else(|| RuntimeError {
+                        message: format!(
+                            "array index {idx} out of bounds (length {})",
+                            items.len()
+                        ),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    })
+            }
+            other => Err(RuntimeError {
+                message: format!("cannot index into `{other}`"),
+                line,
+                column,
+                call_stack: self.call_stack.clone(),
+            }),
         }
     }
 
@@ -375,6 +441,83 @@ impl Interpreter {
         }
     }
 
+    /// Evaluates `len`/`push`/`get`/`set` if `callee` names one of them,
+    /// returning `Ok(None)` for any other callee so `call_function` falls
+    /// through to a user-defined function lookup.
+    fn call_array_builtin(
+        &mut self,
+        callee: &str,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let expect_array = |v: Value,
+                            call_stack: &[StackFrame]|
+         -> Result<Rc<RefCell<Vec<Value>>>, RuntimeError> {
+            match v {
+                Value::Array(items) => Ok(items),
+                other => Err(RuntimeError {
+                    message: format!("`{callee}` expects an array, found `{other}`"),
+                    line,
+                    column,
+                    call_stack: call_stack.to_vec(),
+                }),
+            }
+        };
+        match callee {
+            "len" => {
+                let arr = self.eval_expr(&args[0])?;
+                let items = expect_array(arr, &self.call_stack)?;
+                let len = items.borrow().len() as i64;
+                Ok(Some(Value::Integer(len)))
+            }
+            "push" => {
+                let arr = self.eval_expr(&args[0])?;
+                let value = self.eval_expr(&args[1])?;
+                let items = expect_array(arr, &self.call_stack)?;
+                items.borrow_mut().push(value);
+                Ok(Some(Value::Nil))
+            }
+            "get" => {
+                let arr = self.eval_expr(&args[0])?;
+                let idx = self.eval_int(&args[1], line, column)?;
+                Ok(Some(self.array_get(&arr, idx, line, column)?))
+            }
+            "set" => {
+                let arr = self.eval_expr(&args[0])?;
+                let idx = self.eval_int(&args[1], line, column)?;
+                let value = self.eval_expr(&args[2])?;
+                let items = expect_array(arr, &self.call_stack)?;
+                let mut items = items.borrow_mut();
+                let Some(slot) = usize::try_from(idx).ok().and_then(|i| items.get_mut(i)) else {
+                    return Err(RuntimeError {
+                        message: format!(
+                            "array index {idx} out of bounds (length {})",
+                            items.len()
+                        ),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    });
+                };
+                *slot = value;
+                Ok(Some(Value::Nil))
+            }
+            "pop" => {
+                let arr = self.eval_expr(&args[0])?;
+                let items = expect_array(arr, &self.call_stack)?;
+                let popped = items.borrow_mut().pop().ok_or_else(|| RuntimeError {
+                    message: "cannot `pop` from an empty array".to_string(),
+                    line,
+                    column,
+                    call_stack: self.call_stack.clone(),
+                })?;
+                Ok(Some(popped))
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn call_function(
         &mut self,
         callee: &str,
@@ -389,6 +532,9 @@ impl Interpreter {
             }
             println!("{}", parts.join(" "));
             return Ok(Value::Nil);
+        }
+        if let Some(result) = self.call_array_builtin(callee, args, line, column)? {
+            return Ok(result);
         }
 
         let decl = self
@@ -559,5 +705,70 @@ mod tests {
             run("def fact(n: Int): Int\n  if n <= 1\n    1\n  else\n    n * fact(n - 1)\n  end\nend\nx = fact(5)")
                 .unwrap();
         assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(120)));
+    }
+
+    #[test]
+    fn array_index_and_builtins() {
+        let interp = run(
+            "xs: IntArray = [1, 2, 3]\npush(xs, 4)\nn = len(xs)\nfirst = get(xs, 0)\nset(xs, 0, 99)\nsecond = xs[1]",
+        )
+        .unwrap();
+        assert_eq!(interp.lookup_var("n"), Some(&Value::Integer(4)));
+        assert_eq!(interp.lookup_var("first"), Some(&Value::Integer(1)));
+        assert_eq!(interp.lookup_var("second"), Some(&Value::Integer(2)));
+        match interp.lookup_var("xs") {
+            Some(Value::Array(items)) => {
+                assert_eq!(
+                    *items.borrow(),
+                    vec![
+                        Value::Integer(99),
+                        Value::Integer(2),
+                        Value::Integer(3),
+                        Value::Integer(4)
+                    ]
+                );
+            }
+            other => panic!("expected array, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn array_mutation_visible_through_function_call() {
+        // Arrays have reference semantics: a function that `push`es onto an
+        // array parameter mutates the caller's array too.
+        let interp = run(
+            "def fill(xs: IntArray): Nil\n  push(xs, 1)\n  push(xs, 2)\nend\nxs: IntArray = []\nfill(xs)",
+        )
+        .unwrap();
+        match interp.lookup_var("xs") {
+            Some(Value::Array(items)) => {
+                assert_eq!(*items.borrow(), vec![Value::Integer(1), Value::Integer(2)]);
+            }
+            other => panic!("expected array, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn array_index_out_of_bounds_reports_position() {
+        let err = run("xs: IntArray = [1]\ny = xs[5]").unwrap_err();
+        assert!(err.message.contains("out of bounds"));
+    }
+
+    #[test]
+    fn pop_removes_and_returns_last_element() {
+        let interp = run("xs: IntArray = [1, 2, 3]\ny = pop(xs)").unwrap();
+        assert_eq!(interp.lookup_var("y"), Some(&Value::Integer(3)));
+        match interp.lookup_var("xs") {
+            Some(Value::Array(items)) => {
+                assert_eq!(*items.borrow(), vec![Value::Integer(1), Value::Integer(2)]);
+            }
+            other => panic!("expected array, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pop_from_empty_array_is_runtime_error() {
+        let err = run("xs: IntArray = []\ny = pop(xs)").unwrap_err();
+        assert!(err.message.contains("empty array"));
     }
 }
