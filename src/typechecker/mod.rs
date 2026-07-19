@@ -689,7 +689,10 @@ impl TypeChecker {
         column: usize,
     ) -> Result<Type, TypeError> {
         let mismatch = || TypeError {
-            message: format!("cannot apply `{op:?}` to `{left}` and `{right}`"),
+            message: format!(
+                "cannot apply `{}` to `{left}` and `{right}`",
+                binop_symbol(op)
+            ),
             line,
             column,
         };
@@ -718,6 +721,21 @@ impl TypeChecker {
                 Ok(Type::Boolean)
             }
         }
+    }
+}
+
+fn binop_symbol(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Eq => "==",
+        BinOp::NotEq => "!=",
+        BinOp::Lt => "<",
+        BinOp::Gt => ">",
+        BinOp::LtEq => "<=",
+        BinOp::GtEq => ">=",
     }
 }
 
