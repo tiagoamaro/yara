@@ -60,6 +60,17 @@ pub enum Expr {
         line: usize,
         column: usize,
     },
+    Unary {
+        op: UnOp,
+        expr: Box<Expr>,
+        line: usize,
+        column: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnOp {
+    Neg,
 }
 
 impl Expr {
@@ -72,7 +83,8 @@ impl Expr {
             | Expr::NilLit { line, .. }
             | Expr::Ident { line, .. }
             | Expr::Binary { line, .. }
-            | Expr::Call { line, .. } => *line,
+            | Expr::Call { line, .. }
+            | Expr::Unary { line, .. } => *line,
         }
     }
 
@@ -85,7 +97,8 @@ impl Expr {
             | Expr::NilLit { column, .. }
             | Expr::Ident { column, .. }
             | Expr::Binary { column, .. }
-            | Expr::Call { column, .. } => *column,
+            | Expr::Call { column, .. }
+            | Expr::Unary { column, .. } => *column,
         }
     }
 }

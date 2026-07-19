@@ -1,6 +1,6 @@
 //! Recursive-descent parser: tokens -> AST.
 
-use crate::ast::{BinOp, Expr, Param, Stmt, TypeAnnotation};
+use crate::ast::{BinOp, Expr, Param, Stmt, TypeAnnotation, UnOp};
 use crate::lexer::{normalize_type_alias, Token, TokenKind};
 use std::fmt;
 
@@ -353,7 +353,7 @@ impl Parser {
     }
 
     fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_primary()?;
+        let mut left = self.parse_unary()?;
         loop {
             let op = match self.peek().kind {
                 TokenKind::Star => BinOp::Mul,
@@ -361,7 +361,7 @@ impl Parser {
                 _ => break,
             };
             let tok = self.advance();
-            let right = self.parse_primary()?;
+            let right = self.parse_unary()?;
             left = Expr::Binary {
                 op,
                 left: Box::new(left),
@@ -371,6 +371,20 @@ impl Parser {
             };
         }
         Ok(left)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if self.check(&TokenKind::Minus) {
+            let tok = self.advance();
+            let expr = self.parse_unary()?;
+            return Ok(Expr::Unary {
+                op: UnOp::Neg,
+                expr: Box::new(expr),
+                line: tok.line,
+                column: tok.column,
+            });
+        }
+        self.parse_primary()
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
@@ -606,6 +620,23 @@ mod tests {
                 assert_eq!(type_ann.as_ref().unwrap().name, "Float");
             }
             other => panic!("expected ConstDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_unary_negation() {
+        let stmts = parse("x = -5");
+        match &stmts[0] {
+            Stmt::VarDecl { value, .. } => {
+                assert!(matches!(
+                    value,
+                    Expr::Unary {
+                        op: crate::ast::UnOp::Neg,
+                        ..
+                    }
+                ));
+            }
+            other => panic!("expected VarDecl, got {other:?}"),
         }
     }
 }

@@ -1,6 +1,6 @@
 //! Tree-walk evaluator executing a typechecked AST.
 
-use crate::ast::{BinOp, Expr, Stmt};
+use crate::ast::{BinOp, Expr, Stmt, UnOp};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -295,6 +295,21 @@ impl Interpreter {
                 line,
                 column,
             } => self.call_function(callee, args, *line, *column),
+            Expr::Unary {
+                op: UnOp::Neg,
+                expr,
+                line,
+                column,
+            } => match self.eval_expr(expr)? {
+                Value::Integer(i) => Ok(Value::Integer(-i)),
+                Value::Float(f) => Ok(Value::Float(-f)),
+                other => Err(RuntimeError {
+                    message: format!("cannot negate `{other}`"),
+                    line: *line,
+                    column: *column,
+                    call_stack: self.call_stack.clone(),
+                }),
+            },
         }
     }
 
@@ -410,20 +425,49 @@ impl Interpreter {
 
     /// Executes a function body with Ruby-style implicit last-expression return:
     /// if the body doesn't hit an explicit `return`, the value of a trailing
-    /// `ExprStmt` becomes the call's result.
+    /// `ExprStmt` (or trailing `if`/`elsif`/`else`, recursively) becomes the
+    /// call's result. Mirrors `typechecker::check_body_return_type`.
     fn exec_function_body(&mut self, body: &[Stmt]) -> Result<Value, RuntimeError> {
         for (i, stmt) in body.iter().enumerate() {
             let is_last = i == body.len() - 1;
             if is_last {
-                if let Stmt::ExprStmt(expr) = stmt {
-                    return self.eval_expr(expr);
-                }
+                return self.exec_tail_stmt(stmt);
             }
             if let Flow::Return(v) = self.exec_stmt(stmt)? {
                 return Ok(v);
             }
         }
         Ok(Value::Nil)
+    }
+
+    fn exec_tail_stmt(&mut self, stmt: &Stmt) -> Result<Value, RuntimeError> {
+        match stmt {
+            Stmt::ExprStmt(expr) => self.eval_expr(expr),
+            Stmt::If {
+                condition,
+                then_body,
+                elsif_branches,
+                else_body,
+                ..
+            } => {
+                if self.eval_bool(condition)? {
+                    return self.exec_function_body(then_body);
+                }
+                for (cond, body) in elsif_branches {
+                    if self.eval_bool(cond)? {
+                        return self.exec_function_body(body);
+                    }
+                }
+                match else_body {
+                    Some(body) => self.exec_function_body(body),
+                    None => Ok(Value::Nil),
+                }
+            }
+            _ => match self.exec_stmt(stmt)? {
+                Flow::Return(v) => Ok(v),
+                Flow::Normal => Ok(Value::Nil),
+            },
+        }
     }
 }
 
@@ -498,5 +542,20 @@ mod tests {
     fn explicit_return_short_circuits() {
         let interp = run("def f(): Int\n  return 1\n  2\nend\nx = f()").unwrap();
         assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(1)));
+    }
+
+    #[test]
+    fn unary_negation() {
+        let interp = run("x = -5\ny = -1.5").unwrap();
+        assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(-5)));
+        assert_eq!(interp.lookup_var("y"), Some(&Value::Float(-1.5)));
+    }
+
+    #[test]
+    fn recursive_function_with_if_else_tail() {
+        let interp =
+            run("def fact(n: Int): Int\n  if n <= 1\n    1\n  else\n    n * fact(n - 1)\n  end\nend\nx = fact(5)")
+                .unwrap();
+        assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(120)));
     }
 }
