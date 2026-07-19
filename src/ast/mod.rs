@@ -66,6 +66,17 @@ pub enum Expr {
         line: usize,
         column: usize,
     },
+    ArrayLit {
+        elements: Vec<Expr>,
+        line: usize,
+        column: usize,
+    },
+    Index {
+        array: Box<Expr>,
+        index: Box<Expr>,
+        line: usize,
+        column: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,7 +95,9 @@ impl Expr {
             | Expr::Ident { line, .. }
             | Expr::Binary { line, .. }
             | Expr::Call { line, .. }
-            | Expr::Unary { line, .. } => *line,
+            | Expr::Unary { line, .. }
+            | Expr::ArrayLit { line, .. }
+            | Expr::Index { line, .. } => *line,
         }
     }
 
@@ -98,7 +111,9 @@ impl Expr {
             | Expr::Ident { column, .. }
             | Expr::Binary { column, .. }
             | Expr::Call { column, .. }
-            | Expr::Unary { column, .. } => *column,
+            | Expr::Unary { column, .. }
+            | Expr::ArrayLit { column, .. }
+            | Expr::Index { column, .. } => *column,
         }
     }
 }

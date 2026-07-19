@@ -12,7 +12,8 @@ Implemented. `Parser::new(tokens).parse_program() -> Result<Vec<Stmt>, ParseErro
 - `parse_block(terminators)` collects statements until one of the given terminator token kinds (`end`/`elsif`/`else`) or errors on unexpected EOF with the position of the EOF token.
 - Type aliases normalized here (not in lexer) via `lexer::normalize_type_alias`, in `parse_type_annotation`.
 - `ParseError` mirrors `LexError` shape: `message`, `line`, `column`, `Display` impl `"{line}:{column}: {message}"`.
-- Tests in `mod.rs` cover: function defs, var decl (inferred/explicit/aliased types), if/elsif/else, while, for-range, call expr statement, operator precedence, const decl, error position reporting.
+- Tests in `mod.rs` cover: function defs, var decl (inferred/explicit/aliased types), if/elsif/else, while, for-range, call expr statement, operator precedence, const decl, error position reporting, array literal + indexing, import.
+- Array literals (`[1, 2, 3]`) and indexing (`arr[i]`) are parsed in `parse_primary`/`parse_primary_base`/`parse_index_suffix`: `parse_primary_base` builds the base expression (literal/ident/call/paren/`[...]` literal), then `parse_index_suffix` wraps it in `Expr::Index` for each trailing `[expr]`, looping so chained indexing (`grid[i][j]`) parses even though there's no 2D array type to typecheck it yet.
 
 ## Gotchas
 - `advance()` clamps at the last token (`Eof`) rather than panicking past the end — relies on `tokenize()` always appending a trailing `Eof`.

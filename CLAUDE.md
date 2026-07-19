@@ -27,4 +27,9 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 
 ## Status
 
-Milestones 1-6 done: lexer, AST, parser, typechecker, interpreter all implemented; `yara run <file>` works end to end; all three examples run correctly. 35 unit tests passing, `cargo fmt` clean. Plan: `~/.claude/plans/cosmic-purring-stream.md`. Native codegen (LLVM/Cranelift or C transpile) deferred, not started.
+Milestones 1-6 done: lexer, AST, parser, typechecker, interpreter all implemented; `yara run <file>` works end to end. Since then: unary negation, `if`/`elsif`/`else` as a function's tail expression, file `import`, and a minimal `Array` type (`IntArray`/`FloatArray`/`BoolArray`/`StringArray` with `[]` literals, `arr[i]` indexing, and `len`/`push`/`pop`/`get`/`set` builtins) have all landed. 57 unit tests passing, `cargo fmt` clean. `examples/data_structures/` demonstrates list/stack/queue/linked-list/binary-tree/graph built on arrays. Plan: `~/.claude/plans/cosmic-purring-stream.md`.
+
+## TODO
+
+- Native codegen (LLVM/Cranelift or C transpile) — deferred, not started.
+- **Pointers**: allow users who want to study pointers to opt into them, but handle their absence gracefully for users who don't want to deal with them (i.e. not a silent footgun forced on everyone — likely an explicit opt-in type/syntax, deferred design decision, not started). Current data-structure examples avoid pointers entirely by using arena-style parallel arrays with integer indices instead (see `src/interpreter/CLAUDE.md`, `examples/data_structures/`).

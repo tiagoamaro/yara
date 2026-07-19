@@ -42,6 +42,8 @@ pub enum TokenKind {
     DotDot,
     LParen,
     RParen,
+    LBracket,
+    RBracket,
     Comma,
 
     Eof,
@@ -280,6 +282,8 @@ impl Lexer {
             '/' => TokenKind::Slash,
             '(' => TokenKind::LParen,
             ')' => TokenKind::RParen,
+            '[' => TokenKind::LBracket,
+            ']' => TokenKind::RBracket,
             ',' => TokenKind::Comma,
             '=' => {
                 if self.peek() == Some('=') {
@@ -447,5 +451,20 @@ mod tests {
         assert_eq!(normalize_type_alias("Bool"), "Boolean");
         assert_eq!(normalize_type_alias("Str"), "String");
         assert_eq!(normalize_type_alias("Float"), "Float");
+    }
+
+    #[test]
+    fn brackets() {
+        assert_eq!(
+            kinds("[1, 2]"),
+            vec![
+                TokenKind::LBracket,
+                TokenKind::Int(1),
+                TokenKind::Comma,
+                TokenKind::Int(2),
+                TokenKind::RBracket,
+                TokenKind::Eof,
+            ]
+        );
     }
 }
