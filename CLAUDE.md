@@ -21,6 +21,8 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 - Type aliases are interchangeable and normalized at lex/parse time: `Int`=`Integer`, `Bool`=`Boolean`, `Str`=`String`.
 - No implicit numeric coercion (Int vs Float stays strict).
 - Rust version pinned via `.tool-versions` (asdf).
+- Always run `cargo fmt` before finishing a change; code must pass `cargo fmt --check`.
+- Cover new logic with unit tests wherever feasible (colocated `#[cfg(test)] mod tests` per module); run `cargo test` and confirm green before finishing a change.
 
 ## Status
 

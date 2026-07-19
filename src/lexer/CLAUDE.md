@@ -3,13 +3,16 @@
 Tokenizes Yara source text into a `Vec<Token>` (or streaming iterator).
 
 ## Status
-TODO — not yet implemented.
+Implemented. `Lexer::new(source).tokenize() -> Result<Vec<Token>, LexError>`.
 
-## Requirements
-- Every `Token` must carry `line` and `column` (1-indexed) for diagnostics.
-- Recognize: identifiers, keywords (`def`, `end`, `if`, `elsif`, `else`, `while`, `for`, `in`, `const`, `return`, `true`, `false`, `nil`), literals (Int, Float, String, Bool), operators (`+ - * / == != < > <= >= = := : .. ( ) , #`), line comments (`#...`).
-- Normalize type-name aliases at this stage or in parser: `Int`=`Integer`, `Bool`=`Boolean`, `Str`=`String` (decide and document here once implemented).
-- Lex errors must include line:column and a clear message (invalid char, unterminated string, etc).
+## Design
+- `Token { kind: TokenKind, line, column }`, 1-indexed position from the start of the token.
+- `TokenKind` covers literals (Int/Float/Str/Bool), identifiers, keywords (`def end if elsif else while for in const return nil true false`), operators (`+ - * / == != < > <= >= = := : .. ( ) ,`), `Eof`.
+- Comments (`#...`) and whitespace skipped in `skip_whitespace_and_comments`.
+- String literals support `\n \t \" \\` escapes; unterminated string/char errors report line:column via `LexError`.
+- Type-alias normalization lives in `normalize_type_alias()` (`Int`->`Integer`, `Bool`->`Boolean`, `Str`->`String`) — NOT applied during lexing itself (identifiers stay raw `Ident(String)`); parser/typechecker should call this helper when resolving type annotations, so `Int` and `Integer` compare equal downstream.
+- Tests in `mod.rs` (`cargo test`) cover tokenizing a function def, line/column tracking, literals, comments, range operator, unterminated string, alias normalization.
 
 ## Gotchas
-(none yet — update as discovered)
+- `!` alone (not `!=`) is a lex error — no unary `!`/`not` operator defined yet; add here if boolean negation syntax is decided.
+- Range operator is `..` only (no `...`); single `.` is a lex error since Yara has no field-access dot yet.
