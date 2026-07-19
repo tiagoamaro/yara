@@ -56,6 +56,10 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 5. Arrays, imports, classes
 6. Later: native compilation (LLVM/Cranelift) or C transpile; class inheritance/static methods; opt-in pointers
 
+## Architecture
+
+`docs/architecture.md` walks through the real pipeline (`Lexer` -> `Parser` -> `resolver` -> `TypeChecker` -> `Interpreter`) with Mermaid diagrams and the actual function names involved — written for anyone studying how a small compiler/interpreter is put together. Every function in `src/` also has a `///` doc comment explaining its mechanics, not just its name.
+
 ## Examples
 
 `examples/` has runnable `.yara` programs, organized by theme:

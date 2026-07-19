@@ -4,6 +4,9 @@ use crate::ast::{BinOp, Expr, FieldDecl, Param, Stmt, TypeAnnotation, UnOp};
 use crate::lexer::{normalize_type_alias, Token, TokenKind};
 use std::fmt;
 
+/// A parse-time failure. Mirrors `lexer::LexError`'s shape (a `message` plus
+/// `line`/`column` of the offending token) so both stages of the pipeline
+/// report errors the same way and callers can format them uniformly.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
     pub message: String,
@@ -17,6 +20,11 @@ impl fmt::Display for ParseError {
     }
 }
 
+/// Holds the full token stream produced by the lexer plus a cursor (`pos`)
+/// into it. There is no separate "current token" field: every method reads
+/// through `peek`/`advance`, so `pos` is the single source of truth for where
+/// parsing is. Because it's just an integer, it can be saved and restored
+/// (see `parse_ident_stmt`'s checkpoint/rewind) to support limited backtracking.
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
@@ -27,6 +35,9 @@ impl Parser {
         Parser { tokens, pos: 0 }
     }
 
+    /// Entry point: repeatedly parses top-level statements via `parse_stmt`
+    /// until the `Eof` token is reached. There's no enclosing block here (no
+    /// terminator other than `Eof`), since the whole file is one implicit block.
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut stmts = Vec::new();
         while !self.check(&TokenKind::Eof) {
@@ -35,14 +46,29 @@ impl Parser {
         Ok(stmts)
     }
 
+    /// Returns the token at the current cursor position without consuming it.
+    /// Every dispatch decision in the parser (which statement/expression
+    /// variant to build) is made by inspecting this token first.
     fn peek(&self) -> &Token {
         &self.tokens[self.pos]
     }
 
+    /// Reports whether the current token has the same *kind* as `kind`,
+    /// ignoring any payload the variant carries (e.g. the wrapped `String` in
+    /// `Ident`/`Str`, or the number in `Int`/`Float`). It compares
+    /// `std::mem::discriminant`s rather than the values themselves, so a
+    /// placeholder like `TokenKind::Ident(String::new())` can be used purely
+    /// to mean "any identifier" when building a terminator list, without the
+    /// placeholder's payload ever being compared.
     fn check(&self, kind: &TokenKind) -> bool {
         std::mem::discriminant(&self.peek().kind) == std::mem::discriminant(kind)
     }
 
+    /// Consumes and returns the current token, moving `pos` one step forward.
+    /// Clamps at the last index instead of running past the end of the
+    /// vector, relying on the lexer's invariant that it always appends a
+    /// trailing `Eof` token — so once positioned on `Eof`, further calls just
+    /// keep returning it rather than panicking on out-of-bounds access.
     fn advance(&mut self) -> Token {
         let tok = self.tokens[self.pos].clone();
         if self.pos < self.tokens.len() - 1 {
@@ -51,6 +77,11 @@ impl Parser {
         tok
     }
 
+    /// Consumes the current token if it matches `kind`, otherwise produces a
+    /// `ParseError` naming what was expected (the `what` string, e.g. "`)`"
+    /// or "`=`") versus what was actually found. This is the parser's main
+    /// building block for "this token must be here or the input is invalid"
+    /// checks (closing parens/brackets, `end`, operators, etc.).
     fn expect(&mut self, kind: &TokenKind, what: &str) -> Result<Token, ParseError> {
         if self.check(kind) {
             Ok(self.advance())
@@ -64,6 +95,11 @@ impl Parser {
         }
     }
 
+    /// Like `expect`, specialized for `TokenKind::Ident`: consumes the
+    /// current token only if it's an identifier, unwraps its `String` payload,
+    /// and returns it along with the token's source position (needed by
+    /// callers to stamp AST nodes with a location). Used everywhere a name is
+    /// required — variable/function/class/param names, field/method names.
     fn expect_ident(&mut self) -> Result<(String, usize, usize), ParseError> {
         let tok = self.peek().clone();
         match tok.kind {
@@ -79,6 +115,12 @@ impl Parser {
         }
     }
 
+    /// Parses a type name (after a `:` in a param/field/var/const/return-type
+    /// position) as a bare identifier, then normalizes short aliases (`Int`,
+    /// `Str`, `Bool`, ...) to their canonical names (`Integer`, `String`,
+    /// `Boolean`, ...) via `lexer::normalize_type_alias`. Alias resolution
+    /// happens here in the parser rather than the lexer so the lexer only
+    /// ever emits raw identifier tokens.
     fn parse_type_annotation(&mut self) -> Result<TypeAnnotation, ParseError> {
         let (name, line, column) = self.expect_ident()?;
         Ok(TypeAnnotation {
@@ -88,6 +130,14 @@ impl Parser {
         })
     }
 
+    /// Parses statements (via `parse_stmt`) into a `Vec` until the current
+    /// token matches one of the given `terminators` (e.g. `[End]` for a
+    /// `while`/`def` body, or `[Elsif, Else, End]` for an `if`-branch body).
+    /// The terminator token itself is left unconsumed — the caller (e.g.
+    /// `parse_if`, `parse_while`) is responsible for advancing past it, since
+    /// which terminator matched affects what happens next (another `elsif`
+    /// branch vs. the final `end`). Hitting `Eof` before any terminator is an
+    /// error, since it means the block was never closed.
     fn parse_block(&mut self, terminators: &[TokenKind]) -> Result<Vec<Stmt>, ParseError> {
         let mut stmts = Vec::new();
         while !terminators.iter().any(|t| self.check(t)) {
@@ -104,6 +154,13 @@ impl Parser {
         Ok(stmts)
     }
 
+    /// Dispatches to the right statement sub-parser purely by inspecting the
+    /// current token's kind (one-token lookahead, no backtracking needed at
+    /// this level): keywords like `def`/`const`/`class`/`import`/`return`/
+    /// `if`/`while`/`for` each map to a dedicated `parse_*` method, a leading
+    /// identifier goes to `parse_ident_stmt` (which itself may need to look
+    /// further ahead to disambiguate), and anything else falls through to
+    /// being parsed as a bare expression statement via `parse_expr`.
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         let tok = self.peek().clone();
         match tok.kind {
@@ -123,7 +180,26 @@ impl Parser {
         }
     }
 
-    /// Disambiguates `x = expr` / `x: Type = expr` var decls from bare expression statements.
+    /// Disambiguates the several statement shapes that can start with an
+    /// identifier: `x: Type = expr` (typed var decl), `x = expr` (inferred
+    /// var decl), `obj.field = value` (field assignment), or a bare
+    /// expression statement (e.g. a call `foo()` or `obj.method()`).
+    ///
+    /// Uses a checkpoint/rewind trick because the grammar can't be
+    /// disambiguated by the identifier alone: first it consumes the
+    /// identifier and checks for an immediately-following `:`, which
+    /// unambiguously signals a typed decl. If there's no `:`, the parser
+    /// can't yet tell whether this is `x = value` or just an expression like
+    /// `x.foo()` or `x + 1` — so it rewinds `self.pos` back to the saved
+    /// `checkpoint` and re-parses from scratch as a full expression via
+    /// `parse_expr` (which itself handles idents, calls, field access,
+    /// method calls, ...). Once that expression is in hand, it switches on
+    /// whether an `=` follows and, if so, on the *shape* of the parsed
+    /// expression: a plain `Expr::Ident` becomes an inferred `Stmt::VarDecl`,
+    /// an `Expr::FieldAccess` becomes a `Stmt::FieldAssign`, and anything
+    /// else followed by `=` (e.g. `f() = 2`) is rejected as an invalid
+    /// assignment target. No `=` at all means it's just an expression
+    /// statement.
     fn parse_ident_stmt(&mut self) -> Result<Stmt, ParseError> {
         let checkpoint = self.pos;
         let (name, line, column) = self.expect_ident()?;
@@ -181,6 +257,9 @@ impl Parser {
         Ok(Stmt::ExprStmt(expr))
     }
 
+    /// Parses `import "path"`: the keyword, then a required string-literal
+    /// token holding the module path. Unlike most other statements, an
+    /// import has no `end` to close — it's a single-token-payload statement.
     fn parse_import(&mut self) -> Result<Stmt, ParseError> {
         let import_tok = self.advance();
         let tok = self.peek().clone();
@@ -207,6 +286,11 @@ impl Parser {
         })
     }
 
+    /// Parses `const NAME[: Type] = expr`. Structurally identical to the
+    /// inferred/typed `VarDecl` path in `parse_ident_stmt`, except the `const`
+    /// keyword makes the shape unambiguous up front, so there's no need for
+    /// the checkpoint/rewind trick used there: the optional type annotation
+    /// and the value expression are just read straight through.
     fn parse_const_decl(&mut self) -> Result<Stmt, ParseError> {
         let const_tok = self.advance();
         let (name, _, _) = self.expect_ident()?;
@@ -227,8 +311,20 @@ impl Parser {
         })
     }
 
-    /// `class Name ... end`, restricted body grammar: only `const` decls,
-    /// bare `name: Type` field decls, and `def` methods are allowed.
+    /// Parses `class Name ... end` using its own statement loop rather than
+    /// delegating to `parse_stmt`/`parse_block`, because a class body's
+    /// grammar is deliberately more restricted than a normal block's: only
+    /// three shapes are legal inside it, dispatched on the current token just
+    /// like `parse_stmt` does, but with everything else rejected outright
+    /// instead of falling through to an expression statement:
+    /// - `const NAME: Type = expr` -> delegates to `parse_const_decl`.
+    /// - `def name(...) ... end` -> delegates to `parse_function_def`
+    ///   (becomes a method).
+    /// - a bare `name: Type` (no `=`, no keyword) -> parsed inline here as a
+    ///   `FieldDecl`, since field declarations don't correspond to any
+    ///   `Stmt` variant used outside a class.
+    /// Anything else, or hitting `Eof` before the closing `end`, is a parse
+    /// error naming what was expected.
     fn parse_class(&mut self) -> Result<Stmt, ParseError> {
         let class_tok = self.advance();
         let (name, _, _) = self.expect_ident()?;
@@ -284,6 +380,14 @@ impl Parser {
         })
     }
 
+    /// Parses `def name(param: Type, ...): ReturnType ... end` (both a
+    /// top-level function and, when found inside `parse_class`, a method —
+    /// the AST doesn't distinguish the two, since that's a semantic
+    /// distinction made later by the typechecker/interpreter based on where
+    /// the `FunctionDef` sits). Reads a comma-separated parameter list (each
+    /// requiring an explicit `name: Type`), an optional `: ReturnType`, then
+    /// delegates the function body to `parse_block(&[End])` so it can contain
+    /// arbitrary statements (unlike the restricted `parse_class` body).
     fn parse_function_def(&mut self) -> Result<Stmt, ParseError> {
         let def_tok = self.advance();
         let (name, _, _) = self.expect_ident()?;
@@ -330,6 +434,11 @@ impl Parser {
         })
     }
 
+    /// Parses `return` with an optional trailing expression. The value is
+    /// omitted (`None`) when the very next token is `end` or `Eof`, i.e.
+    /// `return` appears on its own with nothing after it on the same
+    /// statement; otherwise whatever follows is parsed as the return value
+    /// expression.
     fn parse_return(&mut self) -> Result<Stmt, ParseError> {
         let tok = self.advance();
         let value = if self.check(&TokenKind::End) || self.check(&TokenKind::Eof) {
@@ -344,6 +453,14 @@ impl Parser {
         })
     }
 
+    /// Parses `if cond ... [elsif cond ...]* [else ...] end`. Each branch
+    /// body is parsed with `parse_block` given the set of tokens that could
+    /// legally follow it: the `then` body and each `elsif` body stop at the
+    /// next `elsif`, an `else`, or the final `end` (since any of those could
+    /// come next), while the `else` body (if present) only stops at `end`.
+    /// The trailing `end` is consumed once at the very end, after the
+    /// optional `else` has already been handled, closing the whole
+    /// if-elsif-else chain.
     fn parse_if(&mut self) -> Result<Stmt, ParseError> {
         let if_tok = self.advance();
         let condition = self.parse_expr()?;
@@ -376,6 +493,8 @@ impl Parser {
         })
     }
 
+    /// Parses `while cond ... end`: a condition expression followed by a
+    /// body block terminated by `end`.
     fn parse_while(&mut self) -> Result<Stmt, ParseError> {
         let while_tok = self.advance();
         let condition = self.parse_expr()?;
@@ -389,6 +508,13 @@ impl Parser {
         })
     }
 
+    /// Parses `for var in start..end ... end`. Notably, the range bounds are
+    /// parsed with `parse_additive` rather than the full `parse_expr`
+    /// (comparison-level) — since `..` sits between additive and comparison
+    /// precedence in this grammar, using the full expression parser would let
+    /// a stray comparison operator swallow one side of the range in a
+    /// confusing way, so bounds are restricted to additive-or-tighter
+    /// expressions (literals, arithmetic, calls, etc.).
     fn parse_for(&mut self) -> Result<Stmt, ParseError> {
         let for_tok = self.advance();
         let (var_name, _, _) = self.expect_ident()?;
@@ -408,10 +534,34 @@ impl Parser {
         })
     }
 
+    /// Entry point into expression parsing — currently just forwards to
+    /// `parse_comparison`, the loosest-binding level. This is precedence
+    /// climbing / operator-precedence parsing via a chain of methods, one
+    /// per precedence level, from loosest to tightest binding:
+    /// `parse_expr` -> `parse_comparison` -> `parse_additive` ->
+    /// `parse_multiplicative` -> `parse_unary` -> `parse_primary` (which is
+    /// `parse_primary_base` + `parse_postfix`). Each level's method always
+    /// calls the *next tighter* level first to get its left operand (and,
+    /// after seeing an operator, its right operand too), then loops to
+    /// consume zero or more operators *at its own precedence* — never a
+    /// looser one, since those belong to a level further up the chain, and
+    /// never a tighter one, since the recursive call into the next level
+    /// already consumed those. This is what encodes precedence without
+    /// needing an explicit precedence table: `1 + 2 * 3` is parsed by
+    /// `parse_additive` calling `parse_multiplicative` for its left operand,
+    /// which itself consumes `2 * 3` entirely before `parse_additive` ever
+    /// sees the `+`, naturally producing `1 + (2 * 3)`. Each loop builds a
+    /// left-associative tree by re-binding `left` to a new `Expr::Binary`
+    /// node on every iteration, so `1 - 2 - 3` parses as `(1 - 2) - 3` rather
+    /// than the (wrong, right-associative) alternative.
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         self.parse_comparison()
     }
 
+    /// Loosest-binding level: equality/relational operators (`==`, `!=`,
+    /// `<`, `>`, `<=`, `>=`). Gets its operands from `parse_additive` (the
+    /// next tighter level) and loops, left-associatively, over any chain of
+    /// comparison operators — so `a < b == c` parses as `(a < b) == c`.
     fn parse_comparison(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_additive()?;
         loop {
@@ -437,6 +587,10 @@ impl Parser {
         Ok(left)
     }
 
+    /// Middle precedence level: binary `+`/`-`. Gets operands from
+    /// `parse_multiplicative` (tighter-binding) and loops over any chain of
+    /// same-level operators, so `1 + 2 - 3` parses left-associatively as
+    /// `(1 + 2) - 3`.
     fn parse_additive(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_multiplicative()?;
         loop {
@@ -458,6 +612,9 @@ impl Parser {
         Ok(left)
     }
 
+    /// Binds tighter than `+`/`-`, looser than unary `-`: `*`/`/`. Gets
+    /// operands from `parse_unary` and loops over a chain of same-level
+    /// operators left-associatively, so `1 * 2 / 3` parses as `(1 * 2) / 3`.
     fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_unary()?;
         loop {
@@ -479,6 +636,15 @@ impl Parser {
         Ok(left)
     }
 
+    /// Handles prefix `-` (negation). Unlike the binary levels above, this
+    /// isn't a left-associative loop — it's a right-recursive call to itself
+    /// (`self.parse_unary()`, not `parse_primary()`), so a run of leading
+    /// minuses like `--x` parses as nested `Unary(Neg, Unary(Neg, x))`
+    /// rather than being rejected or flattened (the typechecker/interpreter
+    /// are left to just evaluate the double negation). Once there's no more
+    /// leading `-`, it falls through to `parse_primary`, the tightest-binding
+    /// level (literals, identifiers, calls, parens, array literals, and
+    /// their postfix operators).
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if self.check(&TokenKind::Minus) {
             let tok = self.advance();
@@ -493,14 +659,34 @@ impl Parser {
         self.parse_primary()
     }
 
+    /// Tightest-binding level of the precedence chain: builds the base
+    /// expression via `parse_primary_base` (literals, identifiers, calls,
+    /// parenthesized sub-expressions, array literals), then immediately
+    /// hands it to `parse_postfix` to consume any trailing indexing/field-
+    /// access/method-call operators. Postfix operators bind tighter than
+    /// anything else in the grammar — even tighter than unary `-` — which is
+    /// why `parse_unary` recurses into `parse_primary` rather than the other
+    /// way around: `-a[0]` must parse as `-(a[0])`, not `(-a)[0]`.
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         let expr = self.parse_primary_base()?;
         self.parse_postfix(expr)
     }
 
-    /// Wraps `expr` in `Expr::Index` for each trailing `[expr]` (chained
-    /// indexing, e.g. a future 2D-array `grid[i][j]`) and in `Expr::FieldAccess`
-    /// / `Expr::MethodCall` for each trailing `.name` / `.name(args)`.
+    /// Given an already-parsed base expression, greedily consumes a chain of
+    /// postfix operators and folds them onto it, left to right, so they
+    /// associate the way source order suggests (`a.b.c[0].d(1)` reads as
+    /// "get `.b` off `a`, then `.c` off that, then index `[0]`, then call
+    /// `.d(1)` on the result"): each loop iteration wraps `expr` in one more
+    /// layer —
+    /// - a trailing `[expr]` wraps it in `Expr::Index`, supporting chained
+    ///   indexing like a future 2D-array `grid[i][j]`;
+    /// - a trailing `.name` wraps it in `Expr::FieldAccess`, unless that name
+    ///   is immediately followed by `(`, in which case the parenthesized,
+    ///   comma-separated argument list is consumed too and it becomes an
+    ///   `Expr::MethodCall` instead.
+    /// The loop stops (and returns `expr` as-is) as soon as neither `[` nor
+    /// `.` follows, which is what lets a plain identifier or literal pass
+    /// through unchanged when it has no postfix operators at all.
     fn parse_postfix(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
         loop {
             if self.check(&TokenKind::LBracket) {
@@ -552,6 +738,17 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Parses a single base expression with no postfix operators attached
+    /// yet (that's `parse_postfix`'s job, applied by the caller
+    /// `parse_primary`): dispatches purely on the current token's kind to
+    /// build a literal (`Int`/`Float`/`Str`/`Bool`/`Nil`), a bare identifier
+    /// or, if `(` follows the identifier, a function `Call` with a
+    /// comma-separated argument list, a parenthesized sub-expression
+    /// (`( expr )`, which re-enters `parse_expr` at full precedence and just
+    /// returns the inner expression unwrapped — parens have no AST node of
+    /// their own, they just override precedence), or an array literal
+    /// (`[ expr, expr, ... ]`). Any other token is a parse error, since
+    /// nothing else can start an expression.
     fn parse_primary_base(&mut self) -> Result<Expr, ParseError> {
         let tok = self.peek().clone();
         match tok.kind {

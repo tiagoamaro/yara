@@ -12,6 +12,11 @@ use lexer::Lexer;
 use parser::Parser;
 use typechecker::TypeChecker;
 
+/// CLI entry point. Parses `std::env::args()` and dispatches on the
+/// subcommand: only `yara run <file>` is supported, which hands `<file>` off
+/// to [`run_file`]. Any other invocation (missing subcommand, unknown
+/// subcommand, or `run` with no file argument) prints a usage message to
+/// stderr and exits with status 1.
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -29,6 +34,12 @@ fn main() {
     }
 }
 
+/// Runs the full pipeline on the file at `path`: read the source, then in
+/// order [`Lexer`] -> [`Parser`] -> [`resolver::resolve_imports`] ->
+/// [`TypeChecker`] -> [`Interpreter`]. Each stage's error is rendered with
+/// [`print_error`] and the process exits with status 1 at the *first* stage
+/// that fails — later stages never run against a program that didn't pass
+/// the earlier ones.
 fn run_file(path: &str) {
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -161,6 +172,8 @@ fn render_snippet(source: &str, line: usize, column: usize) -> String {
 mod tests {
     use super::*;
 
+    /// The caret line should line up under the exact 1-indexed column passed
+    /// in, not the start of the line.
     #[test]
     fn snippet_points_caret_at_column() {
         let source = "x = 5\ny = x @ 2\n";
@@ -168,11 +181,16 @@ mod tests {
         assert_eq!(snippet, "  |\n2 | y = x @ 2\n  |       ^\n");
     }
 
+    /// A line number past the end of the source (e.g. an EOF-position parse
+    /// error) should render as an empty string rather than panicking.
     #[test]
     fn snippet_out_of_range_line_is_empty() {
         assert_eq!(render_snippet("only one line\n", 5, 1), "");
     }
 
+    /// The left-hand gutter padding should widen to match the line number's
+    /// digit count (e.g. 2 chars for line 10), keeping the `|` columns
+    /// aligned across the blank/text/caret rows.
     #[test]
     fn snippet_gutter_width_matches_line_number_digits() {
         let source = "\n".repeat(9) + "tenth line";
