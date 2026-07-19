@@ -104,6 +104,17 @@ impl TypeChecker {
         }
     }
 
+    /// Runs the full type-checking pipeline over a parsed program, in an order
+    /// designed so nothing has to be declared before it's used:
+    /// 1. `collect_classes` — register every class's fields/consts and method
+    ///    signatures (itself a two-pass step, see its own doc comment).
+    /// 2. `collect_function_signatures` — register every top-level function's
+    ///    param/return types up front, so calls can appear before (or recurse
+    ///    into) the function they call regardless of textual order.
+    /// 3. `check_classes` — now that all signatures are known, actually walk
+    ///    every method body and check it.
+    /// 4. Walk the top-level statements in order with `check_stmt`, checking
+    ///    ordinary code (and, along the way, top-level function bodies too).
     pub fn check_program(&mut self, program: &[Stmt]) -> Result<(), TypeError> {
         self.collect_classes(program)?;
         self.collect_function_signatures(program)?;
@@ -114,6 +125,20 @@ impl TypeChecker {
         Ok(())
     }
 
+    /// Builds `self.classes` in two passes over every `Stmt::ClassDef` in the
+    /// program. Pass one just registers each class's *name* with an empty,
+    /// placeholder `ClassInfo` — this exists purely so that pass two can
+    /// freely resolve a field/param/return type annotation that names *any*
+    /// class, including one declared later in the file or the class's own
+    /// name (self-referential fields, e.g. a `Node` with a `next: Node`
+    /// field). Pass two then does the real work for each class: resolves
+    /// every const/field annotation into a `Type` (consts and instance vars
+    /// are merged into one `fields` map, since both are read unqualified
+    /// inside methods via implicit `self` and the checker doesn't need to
+    /// tell them apart afterward), and resolves every method's param/return
+    /// types into a `FunctionSig` — but does not yet check any method
+    /// *bodies*; that happens later in `check_classes`, once every class's
+    /// signatures are known.
     fn collect_classes(&mut self, program: &[Stmt]) -> Result<(), TypeError> {
         // Pre-register every class name (with an empty placeholder) first, so
         // field/param/return type annotations can name any class regardless
@@ -258,6 +283,11 @@ impl TypeChecker {
         Ok(())
     }
 
+    /// Pre-registers every top-level function's parameter and return types
+    /// into `self.functions`, without checking any body. Run before any
+    /// bodies are checked so that a call to a function defined later in the
+    /// file (or a recursive call to the function currently being checked)
+    /// already has a known signature to check argument types/arity against.
     fn collect_function_signatures(&mut self, program: &[Stmt]) -> Result<(), TypeError> {
         for stmt in program {
             if let Stmt::FunctionDef {
@@ -289,6 +319,15 @@ impl TypeChecker {
         Ok(())
     }
 
+    /// Turns a `TypeAnnotation`'s bare string name (e.g. `"Integer"`,
+    /// `"IntArray"`, or a user-defined class name) into a checker-internal
+    /// `Type`. Checks `self.classes` first, so any name matching an already
+    /// (or not-yet-fully) registered class resolves to `Type::Instance(name)`
+    /// — this is what lets a class name be used as a type annotation exactly
+    /// like a builtin one. Otherwise falls back to the fixed builtin/array
+    /// names in `Type::from_annotation_name`, and errors as "unknown type"
+    /// if the name matches neither (this is also how a typo'd class name in
+    /// an annotation gets caught — same error either way).
     fn resolve_type(&self, name: &str, line: usize, column: usize) -> Result<Type, TypeError> {
         if self.classes.contains_key(name) {
             return Ok(Type::Instance(name.to_string()));
@@ -300,6 +339,12 @@ impl TypeChecker {
         })
     }
 
+    /// Binds `name: ty` in the *innermost* (last) scope on the stack — i.e.
+    /// the scope of whatever block/function/loop body is currently being
+    /// checked. Used for local variable declarations, function/method
+    /// parameters, `for`-loop induction variables, and (in `check_classes`)
+    /// pre-declaring a class's field types so method bodies can read them
+    /// like ordinary locals.
     fn declare_var(&mut self, name: &str, ty: Type) {
         self.scopes
             .last_mut()
@@ -308,20 +353,45 @@ impl TypeChecker {
             .insert(name.to_string(), ty);
     }
 
+    /// Resolves a variable name to its declared `Type`, searching scopes
+    /// innermost-first (`.rev()` over the stack) so that a name declared in
+    /// an inner block correctly shadows a same-named binding from an
+    /// enclosing scope. Returns `None` if the name isn't declared in any
+    /// scope currently on the stack, which callers turn into an "undefined
+    /// variable" `TypeError`.
     fn lookup_var(&self, name: &str) -> Option<&Type> {
         self.scopes.iter().rev().find_map(|s| s.vars.get(name))
     }
 
+    /// Opens a new, empty scope on top of the `Vec<Scope>` stack. Called on
+    /// entry to a function/method body, or a `for` loop body, so that
+    /// variables declared inside don't leak into (or clash with) the
+    /// enclosing scope. Must be paired with a later `pop_scope`.
     fn push_scope(&mut self) {
         self.scopes.push(Scope {
             vars: HashMap::new(),
         });
     }
 
+    /// Discards the innermost scope (and every variable declared in it),
+    /// restoring `lookup_var` resolution to whatever scope was active
+    /// before the matching `push_scope`.
     fn pop_scope(&mut self) {
         self.scopes.pop();
     }
 
+    /// The main statement-level recursive check: one arm per `Stmt` variant.
+    /// Each arm follows the same general shape — recursively check whatever
+    /// sub-expressions/sub-blocks the statement contains (via `check_expr`/
+    /// `check_block`/`check_body_return_type`), then either enforce a rule
+    /// specific to that statement (e.g. an `if`/`while` condition must be
+    /// `Boolean`, a `VarDecl`'s declared annotation must match its value's
+    /// inferred type) or just thread the result through. Declarations
+    /// (`VarDecl`/`ConstDecl`, function/loop parameters) call `declare_var`
+    /// so later statements in the same scope can look the name up. Returns
+    /// `Ok(())` rather than a `Type` because statements (unlike expressions)
+    /// don't themselves have a value — see `check_tail_stmt` for the one
+    /// place a statement's "value" (its tail-expression type) does matter.
     fn check_stmt(&mut self, stmt: &Stmt) -> Result<(), TypeError> {
         match stmt {
             Stmt::VarDecl {
@@ -534,6 +604,10 @@ impl TypeChecker {
             })
     }
 
+    /// Type-checks every statement in a block (an `if`/`while`/`for` body)
+    /// purely for side effects/errors — unlike `check_body_return_type`, no
+    /// statement here is treated as a tail expression, since these blocks
+    /// aren't function bodies and their "last value" is never observed.
     fn check_block(&mut self, body: &[Stmt]) -> Result<(), TypeError> {
         for stmt in body {
             self.check_stmt(stmt)?;
@@ -557,6 +631,23 @@ impl TypeChecker {
         Ok(last_ty)
     }
 
+    /// Checks a single statement *as a tail position* — i.e. as the last
+    /// statement of a function/method body (or of one branch of a trailing
+    /// `if`), where Ruby-style implicit return means "the type of this
+    /// statement is the type the enclosing body returns". An `ExprStmt`
+    /// or an explicit `return expr` yields that expression's type; a bare
+    /// `return` (no value) yields `Type::Nil`. A trailing `if`/`elsif`/`else`
+    /// is the interesting recursive case: it's treated as a tail expression
+    /// in its own right, so each branch's body is checked via
+    /// `check_body_return_type` (its own tail statement resolved the same
+    /// way), and all branch types must be reconciled through
+    /// `combine_tail_types`. If there's no `else`, one possible path yields
+    /// no value at all, so the whole `if`'s tail type collapses to `None`
+    /// ("can't guarantee a return type from this tail position") rather than
+    /// erroring — that `None` is later just skipped when comparing against a
+    /// declared return type. Any other statement in tail position (e.g. a
+    /// `VarDecl` as the last line of a body) is checked normally via
+    /// `check_stmt` and contributes no return type (`None`).
     fn check_tail_stmt(&mut self, stmt: &Stmt) -> Result<Option<Type>, TypeError> {
         match stmt {
             Stmt::ExprStmt(expr) => Ok(Some(self.check_expr(expr)?)),
@@ -611,6 +702,14 @@ impl TypeChecker {
         }
     }
 
+    /// Reconciles the tail type of two sibling branches of an `if` (e.g. the
+    /// running result so far and the next `elsif`/`else` branch). Requires
+    /// exact agreement when both branches have a known type — a mismatch is
+    /// reported as a `TypeError` ("branches of `if` return different types").
+    /// If either side is `None` (that branch's tail wasn't a value, e.g. it
+    /// ended in an ordinary statement rather than an expression), the
+    /// combined result is `None` too, propagating the "not every path
+    /// yields a value" signal up through the whole `if`/`elsif`/`else` chain.
     fn combine_tail_types(
         a: Option<Type>,
         b: Option<Type>,
@@ -628,6 +727,18 @@ impl TypeChecker {
         }
     }
 
+    /// The main expression-level recursive check: one arm per `Expr` variant,
+    /// returning the expression's inferred `Type` (or a `TypeError` if it
+    /// doesn't type-check). Literals (`IntLit`, `StringLit`, etc.) return
+    /// their fixed type directly with no recursion. Everything else
+    /// recursively checks its sub-expressions first and then combines their
+    /// types according to that variant's rule — a binary op delegates to
+    /// `check_binary_op`, a call to a function/array-builtin/method
+    /// delegates to `check_array_builtin`/function-signature lookup/
+    /// `check_method_call`, an index expression requires an `Integer` index
+    /// into an `Array` and yields the element type, and so on. This is the
+    /// same general shape as `check_stmt`, just producing a `Type` instead
+    /// of `()` since every expression (unlike every statement) has a value.
     fn check_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
         match expr {
             Expr::IntLit { .. } => Ok(Type::Integer),
@@ -821,6 +932,15 @@ impl TypeChecker {
         Ok(sig.return_type.unwrap_or(Type::Nil))
     }
 
+    /// Type-checks `ClassName.new(args)`, dispatched from `check_method_call`
+    /// when `method_call`'s object is a bare `Ident` naming a known class
+    /// (rather than a variable bound to an instance). Only `new` is a valid
+    /// "static method" name — anything else is an error. If the class
+    /// declared an `initializer` method, arguments are checked against its
+    /// signature via `check_call_args`; if it didn't, `.new` must be called
+    /// with zero arguments (a helpful error otherwise). Always yields
+    /// `Type::Instance(class_name)` on success, since construction always
+    /// produces an instance of the class being constructed.
     fn check_construction(
         &mut self,
         class_name: &str,
@@ -854,6 +974,14 @@ impl TypeChecker {
         Ok(Type::Instance(class_name.to_string()))
     }
 
+    /// Shared arity/type-checking for any call-like site that already has a
+    /// resolved `FunctionSig` — user-defined top-level function calls,
+    /// instance method calls, and `.new` construction all funnel through
+    /// here. Checks `args.len()` matches `sig.param_types.len()` first (using
+    /// `what` — e.g. `"add"`, `"Hello#greet"`, `"Hello.new"` — to name the
+    /// callee in the error), then checks each argument expression and
+    /// requires its type to exactly equal the corresponding declared
+    /// parameter type (no implicit coercion).
     fn check_call_args(
         &mut self,
         what: &str,
@@ -1009,6 +1137,16 @@ impl TypeChecker {
         }
     }
 
+    /// Enforces binary-operator typing rules given the already-checked types
+    /// of both operands: no implicit numeric coercion, so `+ - * /` require
+    /// both sides to be the *same* type and that type to be `Integer` or
+    /// `Float` (yielding that same type) — except `String + String`, the one
+    /// deliberate cross-type special case, which yields `String`
+    /// (concatenation). Comparisons (`< > <= >=`) require matching numeric
+    /// operands and always yield `Boolean`. Equality (`== !=`) only requires
+    /// both sides to share a type (any type), also yielding `Boolean`. Any
+    /// other combination is a `TypeError` naming the operator via
+    /// `binop_symbol`.
     fn check_binary_op(
         &self,
         op: BinOp,
@@ -1053,6 +1191,9 @@ impl TypeChecker {
     }
 }
 
+/// Renders a `BinOp` back to its source-syntax symbol (e.g. `BinOp::Add` ->
+/// `"+"`), used only to build human-readable `TypeError` messages in
+/// `check_binary_op`.
 fn binop_symbol(op: BinOp) -> &'static str {
     match op {
         BinOp::Add => "+",
@@ -1068,6 +1209,12 @@ fn binop_symbol(op: BinOp) -> &'static str {
     }
 }
 
+/// Extracts a statement's own source line, for reporting a return-type
+/// mismatch at the position of the enclosing `def`/method itself (rather
+/// than at whatever sub-expression produced the mismatched tail type) —
+/// matching on `Stmt::FunctionDef` a second time at the error site would
+/// require re-destructuring the same statement, so this (and `stmt_column`)
+/// factor that out.
 fn stmt_line(stmt: &Stmt) -> usize {
     match stmt {
         Stmt::VarDecl { line, .. }
@@ -1084,6 +1231,7 @@ fn stmt_line(stmt: &Stmt) -> usize {
     }
 }
 
+/// Column counterpart to `stmt_line` — see that function's doc comment.
 fn stmt_column(stmt: &Stmt) -> usize {
     match stmt {
         Stmt::VarDecl { column, .. }
@@ -1100,6 +1248,12 @@ fn stmt_column(stmt: &Stmt) -> usize {
     }
 }
 
+/// Extracts a method's name from its `Stmt::FunctionDef` node, for building
+/// the `"ClassName#method_name"` label used in return-type-mismatch error
+/// messages in `check_classes`. Returns `"?"` for any other statement kind,
+/// which should never actually happen since `ClassDef.methods` only ever
+/// contains `FunctionDef`s (see the `unreachable!` guards in `collect_classes`
+/// and `check_classes`).
 fn method_name(method: &Stmt) -> &str {
     match method {
         Stmt::FunctionDef { name, .. } => name,

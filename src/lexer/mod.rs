@@ -83,14 +83,35 @@ pub fn normalize_type_alias(name: &str) -> &str {
     }
 }
 
+/// Walks a Yara source file one `char` at a time and turns it into a flat
+/// list of tokens (see `tokenize`). This is the very first stage of the
+/// pipeline: `Parser` (in `parser::`) only ever sees `Token`s, never raw
+/// text, so every other stage is shielded from things like whitespace,
+/// comments, or the exact spelling of a `0x`-vs-decimal number literal.
+///
+/// ```mermaid
+/// flowchart LR
+///     A[source: &str] --> B["Lexer::new"]
+///     B --> C["Lexer::tokenize (consumes self)"]
+///     C --> D["Vec&lt;Token&gt;"]
+/// ```
 pub struct Lexer {
+    /// The whole source file, pre-split into `char`s. A `Vec<char>` (rather
+    /// than indexing the original `&str` by byte) means `pos` always lines
+    /// up with a whole character, so multi-byte UTF-8 can't be sliced in
+    /// half — at the cost of an upfront O(n) allocation.
     chars: Vec<char>,
+    /// Index into `chars` of the next character to read.
     pos: usize,
+    /// 1-indexed line of `chars[pos]`, tracked incrementally in `advance`.
     line: usize,
+    /// 1-indexed column of `chars[pos]`, tracked incrementally in `advance`.
     column: usize,
 }
 
 impl Lexer {
+    /// Creates a lexer positioned at the very start of `source` (line 1,
+    /// column 1).
     pub fn new(source: &str) -> Self {
         Lexer {
             chars: source.chars().collect(),
@@ -100,6 +121,20 @@ impl Lexer {
         }
     }
 
+    /// Runs the lexer to completion, producing every token in the source in
+    /// order, terminated by a trailing `TokenKind::Eof`.
+    ///
+    /// The main loop is a dispatch on the next character's *category*:
+    /// 1. Skip any run of whitespace/comments (`skip_whitespace_and_comments`).
+    /// 2. If there's no character left, emit `Eof` at the current position and stop.
+    /// 3. Otherwise, record the token's starting `(line, column)`, then hand off
+    ///    to the sub-lexer for that character's category — digit -> `read_number`,
+    ///    `"` -> `read_string`, letter/`_` -> `read_ident_or_keyword`, anything
+    ///    else -> `read_operator` (which also reports "unrecognized character"
+    ///    errors, since by elimination nothing else matched).
+    ///
+    /// Consumes `self` (rather than borrowing) because a `Lexer` is a
+    /// one-shot pass — there's no reason to keep it around afterward.
     pub fn tokenize(mut self) -> Result<Vec<Token>, LexError> {
         let mut tokens = Vec::new();
         loop {
@@ -129,14 +164,28 @@ impl Lexer {
         Ok(tokens)
     }
 
+    /// Returns the character at the current position without consuming it,
+    /// or `None` at end of input. Every sub-lexer uses this (rather than
+    /// indexing `chars` directly) to decide what to do next without
+    /// accidentally moving forward.
     fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
 
+    /// Like `peek`, but one character further ahead. Needed only where a
+    /// single character isn't enough to decide what's being read — e.g. a
+    /// `.` after digits is only the start of a float if the character after
+    /// *that* is also a digit (`5.5` vs. `5..10`, a range).
     fn peek_next(&self) -> Option<char> {
         self.chars.get(self.pos + 1).copied()
     }
 
+    /// Consumes and returns the current character, moving `pos` forward by
+    /// one and updating `line`/`column` to match: a newline resets the
+    /// column to 1 and bumps the line, anything else just moves the column
+    /// forward. This is the *only* place position bookkeeping happens, so
+    /// every token's reported `line`/`column` is only ever as accurate as
+    /// this one function.
     fn advance(&mut self) -> Option<char> {
         let c = self.peek()?;
         self.pos += 1;
@@ -149,6 +198,10 @@ impl Lexer {
         Some(c)
     }
 
+    /// Consumes whitespace and `#`-to-end-of-line comments in a loop until
+    /// neither is next, so the main `tokenize` loop always lands on the
+    /// start of a real token. Whitespace and comments never become tokens
+    /// themselves — they're fully invisible to every later compiler stage.
     fn skip_whitespace_and_comments(&mut self) {
         loop {
             match self.peek() {
@@ -168,6 +221,13 @@ impl Lexer {
         }
     }
 
+    /// Reads an integer or float literal starting at the current position.
+    /// Consumes a run of digits, then checks for a `.` followed by *another*
+    /// digit (so `5..10` — a range — isn't misread as `5.` followed by
+    /// `.10`) to decide whether to also consume a fractional part. Parses
+    /// the collected text with `str::parse`, turning any failure (e.g. an
+    /// integer literal too large for `i64`) into a `LexError` at the
+    /// literal's starting position.
     fn read_number(&mut self) -> Result<TokenKind, LexError> {
         let (line, column) = (self.line, self.column);
         let start = self.pos;
@@ -200,6 +260,12 @@ impl Lexer {
         }
     }
 
+    /// Reads a `"..."` string literal starting at the opening quote.
+    /// Consumes characters until the matching closing `"`, translating
+    /// `\n`/`\t`/`\"`/`\\` escape sequences along the way (any other escape,
+    /// like `\q`, is a `LexError`). Hitting end-of-input or a newline before
+    /// the closing quote is also an error ("unterminated string literal") —
+    /// Yara has no multi-line string literal syntax.
     fn read_string(&mut self) -> Result<TokenKind, LexError> {
         let (line, column) = (self.line, self.column);
         self.advance(); // opening quote
@@ -249,6 +315,13 @@ impl Lexer {
         Ok(TokenKind::Str(value))
     }
 
+    /// Reads a run of alphanumeric/`_` characters and classifies it: if the
+    /// text matches one of Yara's reserved words (`def`, `if`, `class`, ...)
+    /// or the boolean literals `true`/`false`, returns the matching keyword
+    /// `TokenKind`; otherwise it's a plain identifier (`TokenKind::Ident`).
+    /// Keyword lookup is a `match` on the collected `&str` rather than a
+    /// hash-map — with this few keywords the compiler-generated jump table
+    /// is both simpler to read and at least as fast.
     fn read_ident_or_keyword(&mut self) -> TokenKind {
         let start = self.pos;
         while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
@@ -275,6 +348,14 @@ impl Lexer {
         }
     }
 
+    /// Reads a single operator/punctuation token. Consumes one character and
+    /// switches on it; several (`=`, `!`, `<`, `>`, `:`, `.`) peek one
+    /// character further to decide between a one- and two-character token
+    /// (`=` vs `==`, `:` vs `:=`, `.` vs `..`), following the general lexer
+    /// pattern of "maximal munch" — always prefer the longest valid token.
+    /// `!` with no following `=` and any character matching nothing above
+    /// are both `LexError`s, since Yara has no unary `!`/`not` and no other
+    /// single-character punctuation.
     fn read_operator(&mut self) -> Result<TokenKind, LexError> {
         let (line, column) = (self.line, self.column);
         let c = self.advance().unwrap();

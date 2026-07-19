@@ -47,6 +47,12 @@ impl fmt::Display for Value {
     }
 }
 
+/// One entry in a `RuntimeError`'s call-stack trace: which function/method
+/// call was active, and the source position of the call site (not the
+/// position inside the callee). `call_function`/`run_method`/`construct`
+/// push one of these before running a body and pop it after, so at the
+/// moment an error is actually raised `self.call_stack` holds the full chain
+/// of calls that led there, outermost first.
 #[derive(Debug, Clone)]
 pub struct StackFrame {
     pub function_name: String,
@@ -54,6 +60,11 @@ pub struct StackFrame {
     pub column: usize,
 }
 
+/// A runtime failure (e.g. division by zero, undefined variable, wrong
+/// argument type slipping past the typechecker). Carries the position of the
+/// failing operation plus a snapshot of `Interpreter::call_stack` at the
+/// moment it was constructed, so the top-level error reporter can print a
+/// full trace back through every enclosing function/method call.
 #[derive(Debug, Clone)]
 pub struct RuntimeError {
     pub message: String,
@@ -63,6 +74,12 @@ pub struct RuntimeError {
 }
 
 impl fmt::Display for RuntimeError {
+    /// Renders a rustc-style multi-line trace: the error message, then the
+    /// exact `line:column` where it occurred, then each `StackFrame` in
+    /// `call_stack` reversed (innermost call first) so the trace reads
+    /// top-to-bottom as "here's where it broke, here's who called that,
+    /// here's who called that, ..." — matching how the frames were pushed
+    /// (outermost first) but printed in the opposite order.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "error: {}", self.message)?;
         writeln!(f, "  at {}:{}", self.line, self.column)?;
@@ -128,6 +145,14 @@ impl Interpreter {
         }
     }
 
+    /// Runs a whole program in two passes, mirroring how the typechecker
+    /// resolves forward references. Pass 1: walk every top-level statement
+    /// and register `Stmt::FunctionDef`/`Stmt::ClassDef` into `self.functions`
+    /// / `self.classes` without executing anything else — this is why a
+    /// function can call another function defined later in the same file, or
+    /// a class can reference itself. Pass 2: execute each top-level statement
+    /// in source order (function/class defs are no-ops the second time
+    /// around, see their `exec_stmt` arms).
     pub fn run_program(&mut self, program: &[Stmt]) -> Result<(), RuntimeError> {
         for stmt in program {
             if let Stmt::FunctionDef {
@@ -189,6 +214,12 @@ impl Interpreter {
         Ok(())
     }
 
+    /// Unconditionally inserts `name` into the *innermost* (last) scope,
+    /// creating a brand-new binding there even if an outer scope already has
+    /// a variable with the same name (which would then be shadowed for the
+    /// rest of this scope's lifetime). Used for parameter binding, loop
+    /// variables, and anywhere the language semantics say "this is a fresh
+    /// local," as opposed to `set_var`'s "find and mutate" behavior.
     fn declare_var(&mut self, name: &str, value: Value) {
         self.scopes
             .last_mut()
@@ -197,6 +228,16 @@ impl Interpreter {
             .insert(name.to_string(), value);
     }
 
+    /// Implements assignment (`x = value`, incl. `x = x + 1`). Walks the
+    /// scope stack from innermost to outermost looking for an *existing*
+    /// binding named `name`; if found, mutates it in place. This is what lets
+    /// `while x < 5 { x = x + 1 }` actually increment the `x` declared
+    /// outside the loop body's scope, rather than each loop iteration
+    /// silently creating a new `x` local to that iteration and leaving the
+    /// outer `x` untouched forever. Only if no existing binding is found
+    /// anywhere on the stack does it fall back to `declare_var`, creating a
+    /// brand-new variable in the current (innermost) scope — this is how a
+    /// plain `x = 1` first introduces `x`.
     fn set_var(&mut self, name: &str, value: Value) {
         for scope in self.scopes.iter_mut().rev() {
             if scope.vars.contains_key(name) {
@@ -207,20 +248,46 @@ impl Interpreter {
         self.declare_var(name, value);
     }
 
+    /// Reads a variable by walking the scope stack innermost-first, so a
+    /// local shadows an outer variable of the same name. Returns `None` if
+    /// no scope on the stack has bound `name` (the caller turns that into an
+    /// "undefined variable" `RuntimeError`).
     fn lookup_var(&self, name: &str) -> Option<&Value> {
         self.scopes.iter().rev().find_map(|s| s.vars.get(name))
     }
 
+    /// Pushes a fresh, empty `Scope` onto the stack. Called around function
+    /// bodies and `for` loop bodies to give them their own local namespace;
+    /// `if`/`while`/`elsif`/`else` deliberately do *not* push a scope, so
+    /// variables assigned inside them are visible (and, via `set_var`,
+    /// mutate outer bindings) after the block ends — matching typical
+    /// Ruby-like block scoping rather than C-style brace scoping.
     fn push_scope(&mut self) {
         self.scopes.push(Scope {
             vars: HashMap::new(),
         });
     }
 
+    /// Discards the innermost scope and everything declared in it. Must be
+    /// paired with every `push_scope` — callers are responsible for calling
+    /// this on every exit path (including early `return`/error propagation),
+    /// which is why sites like `Stmt::For` and `call_function` explicitly
+    /// pop in each branch of a `match` rather than relying on RAII.
     fn pop_scope(&mut self) {
         self.scopes.pop();
     }
 
+    /// Executes one statement and reports how control should continue via
+    /// `Flow`: `Flow::Normal` means "fall through to the next statement,"
+    /// `Flow::Return(value)` means "an explicit or implicit `return` fired
+    /// somewhere in here." Rather than unwinding through Rust panics or a
+    /// custom exception type, `return` is threaded *up* the call tree as an
+    /// ordinary value: nested constructs (`Stmt::If`'s branches,
+    /// `Stmt::While`'s/`Stmt::For`'s loop body via `exec_block`) check the
+    /// `Flow` their sub-block produced and, on `Flow::Return`, immediately
+    /// re-return it themselves instead of continuing — so a `return` inside
+    /// a deeply nested `if` inside a `while` propagates all the way out to
+    /// `exec_function_body` without any special control-flow machinery.
     fn exec_stmt(&mut self, stmt: &Stmt) -> Result<Flow, RuntimeError> {
         match stmt {
             Stmt::VarDecl { name, value, .. } | Stmt::ConstDecl { name, value, .. } => {
@@ -326,6 +393,11 @@ impl Interpreter {
         }
     }
 
+    /// Runs a sequence of statements (an `if`/`while`/`for` body) one after
+    /// another, stopping early and propagating `Flow::Return` up to the
+    /// caller the moment any statement produces one — this is the
+    /// "threading" half of the `Flow` mechanism described on `exec_stmt`:
+    /// a nested block never swallows a `return`, it just forwards it.
     fn exec_block(&mut self, body: &[Stmt]) -> Result<Flow, RuntimeError> {
         for stmt in body {
             match self.exec_stmt(stmt)? {
@@ -336,6 +408,10 @@ impl Interpreter {
         Ok(Flow::Normal)
     }
 
+    /// Evaluates `expr` and requires the result to be a `Value::Boolean`
+    /// (used for `if`/`elsif`/`while` conditions); any other runtime value
+    /// is a `RuntimeError` — the typechecker should already have rejected a
+    /// non-Boolean condition, so this is a defense-in-depth check.
     fn eval_bool(&mut self, expr: &Expr) -> Result<bool, RuntimeError> {
         match self.eval_expr(expr)? {
             Value::Boolean(b) => Ok(b),
@@ -348,6 +424,11 @@ impl Interpreter {
         }
     }
 
+    /// Evaluates `expr` and requires the result to be a `Value::Integer`
+    /// (used for `for` loop range bounds and array indices); any other value
+    /// is a `RuntimeError` at the given `line`/`column` (the call site's
+    /// position, since `expr` itself may be a sub-expression without its own
+    /// obviously-relevant position for the error message).
     fn eval_int(&mut self, expr: &Expr, line: usize, column: usize) -> Result<i64, RuntimeError> {
         match self.eval_expr(expr)? {
             Value::Integer(i) => Ok(i),
@@ -360,6 +441,13 @@ impl Interpreter {
         }
     }
 
+    /// The other half of the recursive-evaluation loop alongside
+    /// `exec_stmt`: recursively evaluates an `Expr` down to a runtime
+    /// `Value`. Every compound expression (`Binary`, `Call`, `Index`,
+    /// `FieldAccess`, `MethodCall`, ...) works by recursively calling
+    /// `eval_expr` on its sub-expressions first, then combining the
+    /// resulting `Value`s — there's no separate "compile" step, each
+    /// expression is evaluated directly against the tree on every visit.
     fn eval_expr(&mut self, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
             Expr::IntLit { value, .. } => Ok(Value::Integer(*value)),
@@ -392,6 +480,10 @@ impl Interpreter {
                 line,
                 column,
             } => self.call_function(callee, args, *line, *column),
+            // Unary negation (`-x`): only `Integer`/`Float` can be negated.
+            // Anything else is a `RuntimeError` — the typechecker should
+            // already reject a non-numeric operand, so this arm is
+            // defense-in-depth rather than the primary check.
             Expr::Unary {
                 op: UnOp::Neg,
                 expr,
@@ -513,6 +605,13 @@ impl Interpreter {
         Ok(instance)
     }
 
+    /// Dispatches `object_val.method(args)` to the method declared on
+    /// `object_val`'s class (looked up by the class name stored alongside
+    /// the instance's fields in `Value::Instance`), then delegates to
+    /// `run_method` to actually execute it. Errors if `object_val` isn't an
+    /// instance at all, or if its class has no method of that name — no
+    /// inheritance, so only the exact class name recorded at construction
+    /// time is consulted.
     fn call_method(
         &mut self,
         object_val: Value,
@@ -596,6 +695,11 @@ impl Interpreter {
         result
     }
 
+    /// Bounds-checked read of `array_val[idx]`, shared by `Expr::Index`
+    /// (`arr[i]`) and the `get` builtin. Negative or out-of-range indices
+    /// produce a `RuntimeError` naming the offending index and the array's
+    /// actual length, rather than panicking — `usize::try_from` rejects
+    /// negative `idx` up front, and `Vec::get` handles the too-large case.
     fn array_get(
         &self,
         array_val: &Value,
@@ -628,6 +732,21 @@ impl Interpreter {
         }
     }
 
+    /// Implements the actual runtime semantics of each `BinOp` once both
+    /// operands have already been evaluated to `Value`s. Notable cases:
+    /// - `Add` also handles `String + String` as concatenation (`a + &b`),
+    ///   not just numeric addition.
+    /// - `Div` on two `Integer`s explicitly checks for a zero divisor first
+    ///   and raises "division by zero" as a `RuntimeError` instead of
+    ///   letting Rust's integer division panic; float division by zero is
+    ///   *not* checked here and silently produces IEEE 754 `inf`/`NaN`.
+    /// - `Eq`/`NotEq` just defer to `Value`'s derived `PartialEq` — works
+    ///   for any pair of values, including comparing across different
+    ///   variants (always `false`/`true` respectively).
+    /// - `Lt`/`Gt`/`LtEq`/`GtEq` require both operands to be the same
+    ///   numeric type (`Integer`/`Integer` or `Float`/`Float`) and use
+    ///   `partial_cmp`, erroring on anything else (including mixed
+    ///   Integer/Float, which the typechecker should already reject).
     fn eval_binary_op(
         &self,
         op: BinOp,
@@ -765,6 +884,19 @@ impl Interpreter {
         }
     }
 
+    /// Resolves and invokes a call to a bare name: first the `print`
+    /// built-in (special-cased directly, joins evaluated args with a space
+    /// and prints them), then the array builtins via `call_array_builtin`,
+    /// and only then a user-defined top-level function looked up in
+    /// `self.functions` (populated by `run_program`'s first pass). For a
+    /// user function: evaluates all argument expressions in the *caller's*
+    /// scope first, pushes a `StackFrame` (for error traces) and a fresh
+    /// `Scope`, binds each param name to its evaluated argument via
+    /// `declare_var`, runs the body through `exec_function_body`, then pops
+    /// the scope and stack frame before returning the body's result — the
+    /// pop happens unconditionally after `exec_function_body` regardless of
+    /// whether it returned `Ok` or `Err`, so a mid-body error doesn't leak
+    /// the callee's scope.
     fn call_function(
         &mut self,
         callee: &str,
@@ -835,6 +967,20 @@ impl Interpreter {
         Ok(Value::Nil)
     }
 
+    /// Produces the `Value` a function body's *last* statement contributes
+    /// as the call's implicit return value, called only for that final
+    /// statement by `exec_function_body`. A trailing `Stmt::ExprStmt` simply
+    /// evaluates to its expression's value. A trailing `Stmt::If` recurses:
+    /// whichever branch's body actually runs (`then`/an `elsif`/`else`) is
+    /// itself handed to `exec_function_body` again — not `exec_tail_stmt` —
+    /// so that branch's own trailing statement (including another nested
+    /// `if`) is resolved the same way, all the way down. Any other kind of
+    /// trailing statement (e.g. a `while`/`for`/assignment) falls through to
+    /// ordinary `exec_stmt`: an explicit `Flow::Return` still yields its
+    /// value, but `Flow::Normal` yields `Value::Nil` (there's no expression
+    /// value to take). This logic must stay in lockstep with
+    /// `typechecker::check_body_return_type`/`check_tail_stmt`, which
+    /// statically predicts the same result.
     fn exec_tail_stmt(&mut self, stmt: &Stmt) -> Result<Value, RuntimeError> {
         match stmt {
             Stmt::ExprStmt(expr) => self.eval_expr(expr),

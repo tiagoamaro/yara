@@ -15,6 +15,7 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 - `src/main.rs` — CLI entry (`yara run <file>`) and error rendering (`print_error`/`render_snippet`): every lex/parse/import/type/runtime error is printed rustc-style (file:line:col header, source line, `^` caret), with a snippet per call-stack frame for runtime errors.
 - `examples/` — sample `.yara` programs. See `examples/CLAUDE.md`.
 - `docs/syntax.md` — grammar notes, updated as syntax stabilizes.
+- `docs/architecture.md` — Mermaid-diagrammed walkthrough of the real pipeline and each stage's internal control flow, for anyone studying how this compiler/interpreter is built. Every function in `src/` also carries a `///` doc comment explaining its mechanics (not just its name) — keep both in sync when changing a stage's algorithm, not just its behavior.
 
 ## Conventions
 
