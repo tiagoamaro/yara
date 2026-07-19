@@ -3,7 +3,7 @@
 Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1.
 
 ## Status
-All six verified against the actual binary (2026-07-18); output below is real, not illustrative.
+All nine verified against the actual binary (2026-07-18); output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -38,6 +38,18 @@ All six verified against the actual binary (2026-07-18); output below is real, n
     in `countdown` at 11:1
   ```
   The bottom frame (`at 11:1`) is the original top-level call site; each frame above it is one level of recursion, down to the `1 / n` that actually failed.
+- `class_unknown_field.yara` — accessing a field the class never declared (typecheck-time, via `check_field_access`):
+  ```
+  type error: 11:8: class `Hello` has no field `missing`
+  ```
+- `class_field_type_mismatch.yara` — assigning a `String` to an `Integer` field:
+  ```
+  type error: 11:2: cannot assign `String` to field `count` of type `Integer`
+  ```
+- `class_wrong_arg_count.yara` — calling `Hello.new` with two args when `initializer` takes one:
+  ```
+  type error: 10:10: `Hello.new` expects 1 argument(s), found 2
+  ```
 
 ## Gotchas
 - `undefined_variable.yara` shows that referencing an undefined variable is a **typecheck-time** error, not a runtime one — Yara's typechecker tracks variable scope itself (see `src/typechecker/CLAUDE.md`), so this never reaches the interpreter.
