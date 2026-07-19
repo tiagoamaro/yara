@@ -12,13 +12,14 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 - `src/typechecker/` — static type checking pass. See `src/typechecker/CLAUDE.md`.
 - `src/interpreter/` — tree-walk evaluator. See `src/interpreter/CLAUDE.md`.
 - `src/resolver/` — resolves `import "path"` statements before typechecking. See `src/resolver/CLAUDE.md`.
+- `src/main.rs` — CLI entry (`yara run <file>`) and error rendering (`print_error`/`render_snippet`): every lex/parse/import/type/runtime error is printed rustc-style (file:line:col header, source line, `^` caret), with a snippet per call-stack frame for runtime errors.
 - `examples/` — sample `.yara` programs. See `examples/CLAUDE.md`.
 - `docs/syntax.md` — grammar notes, updated as syntax stabilizes.
 
 ## Conventions
 
 - Every token/AST node carries `(line, column)` position — required for diagnostics, not optional.
-- Errors (lexer/parser/typechecker/runtime) must report exact line:column with a source excerpt + caret, rustc-style.
+- Errors (lexer/parser/typechecker/runtime) must report exact line:column with a source excerpt + caret, rustc-style — delivered by `main.rs::print_error`, not by the individual compiler stages (they only carry line/column + message).
 - Type aliases are interchangeable and normalized at lex/parse time: `Int`=`Integer`, `Bool`=`Boolean`, `Str`=`String`.
 - No implicit numeric coercion (Int vs Float stays strict).
 - Rust version pinned via `.tool-versions` (asdf).
@@ -35,3 +36,4 @@ Milestones 1-6 done: lexer, AST, parser, typechecker, interpreter all implemente
 - **Pointers**: allow users who want to study pointers to opt into them, but handle their absence gracefully for users who don't want to deal with them (i.e. not a silent footgun forced on everyone — likely an explicit opt-in type/syntax, deferred design decision, not started). Current data-structure examples avoid pointers entirely by using arena-style parallel arrays with integer indices instead (see `src/interpreter/CLAUDE.md`, `examples/data_structures/`).
 - **Class inheritance**, class-level/static methods/fields (beyond the special `.new`), and visibility modifiers — all deliberately out of scope for the first `class` cut; not started.
 - Known soundness gap: an instance field declared with no value (`count: Integer`) is `Nil` at runtime until some method assigns it — the typechecker doesn't track "definitely assigned before use," so reading a field before `initializer` sets it type-checks fine but is a `Nil` where e.g. `Integer` was expected. Not fixed yet.
+- Known gap: error rendering (`main.rs::print_error`) always reads the source snippet from the entry file the user ran `yara run` on, never from whichever file a position actually originated in. Since `import` splices statements from other files in before typechecking/interpretation runs (see `src/resolver/CLAUDE.md`), an error whose line:column belongs to an imported file renders the wrong (or out-of-range) snippet. Fixing it means threading a file path alongside every error's line/column, not just the entry path — not done yet.
