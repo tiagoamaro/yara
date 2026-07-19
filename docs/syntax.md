@@ -44,6 +44,10 @@ for i in 0..10
 end
 ```
 
+## Unary operators
+
+`-x` (negation, `Integer`/`Float` only). No `!`/`not` yet.
+
 ## Comments
 
 `# line comment`

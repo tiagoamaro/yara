@@ -1,6 +1,6 @@
 //! Static type checking pass over the AST.
 
-use crate::ast::{BinOp, Expr, Stmt};
+use crate::ast::{BinOp, Expr, Stmt, UnOp};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -311,23 +311,89 @@ impl TypeChecker {
 
     /// Returns the type of the function body's final expression, used to validate
     /// against a declared return type (Ruby-style implicit last-expression return).
+    /// An `if`/`elsif`/`else` as the trailing statement is itself treated as a tail
+    /// expression: each branch's own tail type must agree.
     fn check_body_return_type(&mut self, body: &[Stmt]) -> Result<Option<Type>, TypeError> {
-        let mut last_expr_ty = None;
+        let mut last_ty = None;
         for (i, stmt) in body.iter().enumerate() {
-            self.check_stmt(stmt)?;
             if i == body.len() - 1 {
-                if let Stmt::ExprStmt(expr) = stmt {
-                    last_expr_ty = Some(self.check_expr(expr)?);
-                }
-                if let Stmt::Return {
-                    value: Some(expr), ..
-                } = stmt
-                {
-                    last_expr_ty = Some(self.check_expr(expr)?);
-                }
+                last_ty = self.check_tail_stmt(stmt)?;
+            } else {
+                self.check_stmt(stmt)?;
             }
         }
-        Ok(last_expr_ty)
+        Ok(last_ty)
+    }
+
+    fn check_tail_stmt(&mut self, stmt: &Stmt) -> Result<Option<Type>, TypeError> {
+        match stmt {
+            Stmt::ExprStmt(expr) => Ok(Some(self.check_expr(expr)?)),
+            Stmt::Return {
+                value: Some(expr), ..
+            } => Ok(Some(self.check_expr(expr)?)),
+            Stmt::Return { value: None, .. } => Ok(Some(Type::Nil)),
+            Stmt::If {
+                condition,
+                then_body,
+                elsif_branches,
+                else_body,
+                line,
+                column,
+            } => {
+                let cond_ty = self.check_expr(condition)?;
+                if cond_ty != Type::Boolean {
+                    return Err(TypeError {
+                        message: format!("`if` condition must be Boolean, found `{cond_ty}`"),
+                        line: *line,
+                        column: *column,
+                    });
+                }
+                let mut result = self.check_body_return_type(then_body)?;
+                for (cond, body) in elsif_branches {
+                    let ty = self.check_expr(cond)?;
+                    if ty != Type::Boolean {
+                        return Err(TypeError {
+                            message: format!("`elsif` condition must be Boolean, found `{ty}`"),
+                            line: cond.line(),
+                            column: cond.column(),
+                        });
+                    }
+                    let branch_ty = self.check_body_return_type(body)?;
+                    result = Self::combine_tail_types(result, branch_ty, *line, *column)?;
+                }
+                result = match else_body {
+                    Some(body) => {
+                        let branch_ty = self.check_body_return_type(body)?;
+                        Self::combine_tail_types(result, branch_ty, *line, *column)?
+                    }
+                    // No `else`: not every path yields a value, so this `if` can't
+                    // be relied on as a tail expression.
+                    None => None,
+                };
+                Ok(result)
+            }
+            _ => {
+                self.check_stmt(stmt)?;
+                Ok(None)
+            }
+        }
+    }
+
+    fn combine_tail_types(
+        a: Option<Type>,
+        b: Option<Type>,
+        line: usize,
+        column: usize,
+    ) -> Result<Option<Type>, TypeError> {
+        match (a, b) {
+            (Some(x), Some(y)) if x == y => Ok(Some(x)),
+            (Some(x), Some(y)) => Err(TypeError {
+                message: format!("branches of `if` return different types: `{x}` vs `{y}`"),
+                line,
+                column,
+            }),
+            _ => Ok(None),
+        }
     }
 
     fn check_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
@@ -354,6 +420,22 @@ impl TypeChecker {
                 let left_ty = self.check_expr(left)?;
                 let right_ty = self.check_expr(right)?;
                 self.check_binary_op(*op, &left_ty, &right_ty, *line, *column)
+            }
+            Expr::Unary {
+                op: UnOp::Neg,
+                expr,
+                line,
+                column,
+            } => {
+                let ty = self.check_expr(expr)?;
+                match ty {
+                    Type::Integer | Type::Float => Ok(ty),
+                    other => Err(TypeError {
+                        message: format!("cannot negate `{other}`"),
+                        line: *line,
+                        column: *column,
+                    }),
+                }
             }
             Expr::Call {
                 callee,
@@ -535,5 +617,27 @@ mod tests {
     fn for_loop_range_must_be_integer() {
         let err = check("for i in 0..\"a\"\n  print(i)\nend");
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn unary_negation_type() {
+        assert!(check("x: Int = -5").is_ok());
+        assert!(check("x: Float = -1.5").is_ok());
+        assert!(check("x = -\"hi\"").is_err());
+    }
+
+    #[test]
+    fn if_else_as_tail_expr_return_type() {
+        assert!(check(
+            "def fact(n: Int): Int\n  if n <= 1\n    1\n  else\n    n * fact(n - 1)\n  end\nend"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn if_tail_branches_must_agree_on_type() {
+        let err =
+            check("def f(): Int\n  if true\n    1\n  else\n    \"oops\"\n  end\nend").unwrap_err();
+        assert!(err.message.contains("different types"));
     }
 }
