@@ -26,4 +26,4 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 
 ## Status
 
-Bootstrap phase. Plan: `~/.claude/plans/cosmic-purring-stream.md`. Milestones: lexer to parser to typechecker to interpreter to examples, native codegen deferred.
+Milestones 1-6 done: lexer, AST, parser, typechecker, interpreter all implemented; `yara run <file>` works end to end; all three examples run correctly. 35 unit tests passing, `cargo fmt` clean. Plan: `~/.claude/plans/cosmic-purring-stream.md`. Native codegen (LLVM/Cranelift or C transpile) deferred, not started.
