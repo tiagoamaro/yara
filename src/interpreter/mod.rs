@@ -226,6 +226,8 @@ impl Interpreter {
                 self.eval_expr(expr)?;
                 Ok(Flow::Normal)
             }
+            // Resolved away by `resolver` before the interpreter ever sees the program.
+            Stmt::Import { .. } => Ok(Flow::Normal),
         }
     }
 

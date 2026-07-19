@@ -109,6 +109,7 @@ impl Parser {
         match tok.kind {
             TokenKind::Def => self.parse_function_def(),
             TokenKind::Const => self.parse_const_decl(),
+            TokenKind::Import => self.parse_import(),
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
@@ -156,6 +157,32 @@ impl Parser {
         self.pos = checkpoint;
         let expr = self.parse_expr()?;
         Ok(Stmt::ExprStmt(expr))
+    }
+
+    fn parse_import(&mut self) -> Result<Stmt, ParseError> {
+        let import_tok = self.advance();
+        let tok = self.peek().clone();
+        let path = match tok.kind {
+            TokenKind::Str(value) => {
+                self.advance();
+                value
+            }
+            _ => {
+                return Err(ParseError {
+                    message: format!(
+                        "expected string literal after `import`, found {:?}",
+                        tok.kind
+                    ),
+                    line: tok.line,
+                    column: tok.column,
+                });
+            }
+        };
+        Ok(Stmt::Import {
+            path,
+            line: import_tok.line,
+            column: import_tok.column,
+        })
     }
 
     fn parse_const_decl(&mut self) -> Result<Stmt, ParseError> {
@@ -637,6 +664,15 @@ mod tests {
                 ));
             }
             other => panic!("expected VarDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_import() {
+        let stmts = parse("import \"helper\"");
+        match &stmts[0] {
+            Stmt::Import { path, .. } => assert_eq!(path, "helper"),
+            other => panic!("expected Import, got {other:?}"),
         }
     }
 }

@@ -44,6 +44,14 @@ for i in 0..10
 end
 ```
 
+## Imports
+
+```
+import "helper"       # resolves to helper.yara, relative to this file's directory
+```
+
+Splices the imported file's top-level declarations into this file at typecheck/interpret time. No namespacing yet — everything lands in one flat global scope.
+
 ## Unary operators
 
 `-x` (negation, `Integer`/`Float` only). No `!`/`not` yet.

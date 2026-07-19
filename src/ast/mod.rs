@@ -169,4 +169,9 @@ pub enum Stmt {
         column: usize,
     },
     ExprStmt(Expr),
+    Import {
+        path: String,
+        line: usize,
+        column: usize,
+    },
 }

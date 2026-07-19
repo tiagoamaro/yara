@@ -11,6 +11,7 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 - `src/parser/` — recursive-descent parser, tokens to AST. See `src/parser/CLAUDE.md`.
 - `src/typechecker/` — static type checking pass. See `src/typechecker/CLAUDE.md`.
 - `src/interpreter/` — tree-walk evaluator. See `src/interpreter/CLAUDE.md`.
+- `src/resolver/` — resolves `import "path"` statements before typechecking. See `src/resolver/CLAUDE.md`.
 - `examples/` — sample `.yara` programs. See `examples/CLAUDE.md`.
 - `docs/syntax.md` — grammar notes, updated as syntax stabilizes.
 
