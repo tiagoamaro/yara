@@ -16,6 +16,7 @@ All examples run end-to-end via `cargo run -- run examples/<file>.yara` (verifie
 - `kitchen_sink.yara` — imports every other example file (`import "name"`, no `.yara` extension needed) to exercise the whole language in one run; demonstrates the `resolver` (see `src/resolver/CLAUDE.md`). Does not currently import `data_structures/*` (kept separate since those are more involved demos, not quick language-feature smoke tests).
 - `data_structures/` — array-backed data structure demos (`list`, `stack`, `queue`, `linked_list`, `binary_tree`, `graph`); see its own `CLAUDE.md`.
 - `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace; see its own `CLAUDE.md`.
+- `objects/` — `class` declarations: const/instance-var/initializer/method, `.new` construction, field read/write; see its own `CLAUDE.md`.
 
 ## Gotchas
 - `import` paths are relative to the importing file's own directory and resolved at `yara run` time (not a build step) — running `kitchen_sink.yara` from a different working directory still works because resolution is relative to the file, not cwd.

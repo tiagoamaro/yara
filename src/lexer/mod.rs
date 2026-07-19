@@ -24,6 +24,7 @@ pub enum TokenKind {
     Return,
     Nil,
     Import,
+    Class,
 
     // operators / punctuation
     Plus,
@@ -40,6 +41,7 @@ pub enum TokenKind {
     Colon,
     ColonEq,
     DotDot,
+    Dot,
     LParen,
     RParen,
     LBracket,
@@ -265,6 +267,7 @@ impl Lexer {
             "const" => TokenKind::Const,
             "return" => TokenKind::Return,
             "import" => TokenKind::Import,
+            "class" => TokenKind::Class,
             "nil" => TokenKind::Nil,
             "true" => TokenKind::Bool(true),
             "false" => TokenKind::Bool(false),
@@ -334,11 +337,7 @@ impl Lexer {
                     self.advance();
                     TokenKind::DotDot
                 } else {
-                    return Err(LexError {
-                        message: "unexpected character `.`".to_string(),
-                        line,
-                        column,
-                    });
+                    TokenKind::Dot
                 }
             }
             other => {
@@ -463,6 +462,22 @@ mod tests {
                 TokenKind::Comma,
                 TokenKind::Int(2),
                 TokenKind::RBracket,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn class_keyword_and_dot() {
+        assert_eq!(
+            kinds("class Foo\nend\nx.field"),
+            vec![
+                TokenKind::Class,
+                TokenKind::Ident("Foo".into()),
+                TokenKind::End,
+                TokenKind::Ident("x".into()),
+                TokenKind::Dot,
+                TokenKind::Ident("field".into()),
                 TokenKind::Eof,
             ]
         );

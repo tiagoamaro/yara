@@ -1,6 +1,6 @@
 //! Recursive-descent parser: tokens -> AST.
 
-use crate::ast::{BinOp, Expr, Param, Stmt, TypeAnnotation, UnOp};
+use crate::ast::{BinOp, Expr, FieldDecl, Param, Stmt, TypeAnnotation, UnOp};
 use crate::lexer::{normalize_type_alias, Token, TokenKind};
 use std::fmt;
 
@@ -109,6 +109,7 @@ impl Parser {
         match tok.kind {
             TokenKind::Def => self.parse_function_def(),
             TokenKind::Const => self.parse_const_decl(),
+            TokenKind::Class => self.parse_class(),
             TokenKind::Import => self.parse_import(),
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
@@ -141,21 +142,42 @@ impl Parser {
             });
         }
 
+        // Not a typed decl: rewind and parse a full expression, which also
+        // handles `obj.field`, `obj.method(args)`, plain idents, and calls.
+        self.pos = checkpoint;
+        let expr = self.parse_expr()?;
+
         if self.check(&TokenKind::Eq) {
             self.advance();
             let value = self.parse_expr()?;
-            return Ok(Stmt::VarDecl {
-                name,
-                type_ann: None,
-                value,
-                line,
-                column,
-            });
+            return match expr {
+                Expr::Ident { name, line, column } => Ok(Stmt::VarDecl {
+                    name,
+                    type_ann: None,
+                    value,
+                    line,
+                    column,
+                }),
+                Expr::FieldAccess {
+                    object,
+                    field,
+                    line,
+                    column,
+                } => Ok(Stmt::FieldAssign {
+                    object: *object,
+                    field,
+                    value,
+                    line,
+                    column,
+                }),
+                other => Err(ParseError {
+                    message: "invalid assignment target".to_string(),
+                    line: other.line(),
+                    column: other.column(),
+                }),
+            };
         }
 
-        // not a var decl: rewind and parse as expression statement
-        self.pos = checkpoint;
-        let expr = self.parse_expr()?;
         Ok(Stmt::ExprStmt(expr))
     }
 
@@ -202,6 +224,63 @@ impl Parser {
             value,
             line: const_tok.line,
             column: const_tok.column,
+        })
+    }
+
+    /// `class Name ... end`, restricted body grammar: only `const` decls,
+    /// bare `name: Type` field decls, and `def` methods are allowed.
+    fn parse_class(&mut self) -> Result<Stmt, ParseError> {
+        let class_tok = self.advance();
+        let (name, _, _) = self.expect_ident()?;
+
+        let mut consts = Vec::new();
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+
+        while !self.check(&TokenKind::End) {
+            let tok = self.peek().clone();
+            match tok.kind {
+                TokenKind::Eof => {
+                    return Err(ParseError {
+                        message: "unexpected end of input, expected `end`".to_string(),
+                        line: tok.line,
+                        column: tok.column,
+                    });
+                }
+                TokenKind::Const => consts.push(self.parse_const_decl()?),
+                TokenKind::Def => methods.push(self.parse_function_def()?),
+                TokenKind::Ident(_) => {
+                    let (fname, fline, fcolumn) = self.expect_ident()?;
+                    self.expect(&TokenKind::Colon, "`:`")?;
+                    let type_ann = self.parse_type_annotation()?;
+                    fields.push(FieldDecl {
+                        name: fname,
+                        type_ann,
+                        line: fline,
+                        column: fcolumn,
+                    });
+                }
+                _ => {
+                    return Err(ParseError {
+                        message: format!(
+                            "expected a const, field, or method declaration inside `class`, found {:?}",
+                            tok.kind
+                        ),
+                        line: tok.line,
+                        column: tok.column,
+                    });
+                }
+            }
+        }
+        self.expect(&TokenKind::End, "`end`")?;
+
+        Ok(Stmt::ClassDef {
+            name,
+            consts,
+            fields,
+            methods,
+            line: class_tok.line,
+            column: class_tok.column,
         })
     }
 
@@ -416,22 +495,59 @@ impl Parser {
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         let expr = self.parse_primary_base()?;
-        self.parse_index_suffix(expr)
+        self.parse_postfix(expr)
     }
 
-    /// Wraps `expr` in `Expr::Index` for each trailing `[expr]`, allowing chained
-    /// indexing (e.g. a future 2D-array `grid[i][j]`).
-    fn parse_index_suffix(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
-        while self.check(&TokenKind::LBracket) {
-            let bracket_tok = self.advance();
-            let index = self.parse_expr()?;
-            self.expect(&TokenKind::RBracket, "`]`")?;
-            expr = Expr::Index {
-                array: Box::new(expr),
-                index: Box::new(index),
-                line: bracket_tok.line,
-                column: bracket_tok.column,
-            };
+    /// Wraps `expr` in `Expr::Index` for each trailing `[expr]` (chained
+    /// indexing, e.g. a future 2D-array `grid[i][j]`) and in `Expr::FieldAccess`
+    /// / `Expr::MethodCall` for each trailing `.name` / `.name(args)`.
+    fn parse_postfix(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
+        loop {
+            if self.check(&TokenKind::LBracket) {
+                let bracket_tok = self.advance();
+                let index = self.parse_expr()?;
+                self.expect(&TokenKind::RBracket, "`]`")?;
+                expr = Expr::Index {
+                    array: Box::new(expr),
+                    index: Box::new(index),
+                    line: bracket_tok.line,
+                    column: bracket_tok.column,
+                };
+            } else if self.check(&TokenKind::Dot) {
+                let dot_tok = self.advance();
+                let (name, _, _) = self.expect_ident()?;
+                if self.check(&TokenKind::LParen) {
+                    self.advance();
+                    let mut args = Vec::new();
+                    if !self.check(&TokenKind::RParen) {
+                        loop {
+                            args.push(self.parse_expr()?);
+                            if self.check(&TokenKind::Comma) {
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(&TokenKind::RParen, "`)`")?;
+                    expr = Expr::MethodCall {
+                        object: Box::new(expr),
+                        method: name,
+                        args,
+                        line: dot_tok.line,
+                        column: dot_tok.column,
+                    };
+                } else {
+                    expr = Expr::FieldAccess {
+                        object: Box::new(expr),
+                        field: name,
+                        line: dot_tok.line,
+                        column: dot_tok.column,
+                    };
+                }
+            } else {
+                break;
+            }
         }
         Ok(expr)
     }
@@ -734,6 +850,81 @@ mod tests {
         match &stmts[0] {
             Stmt::Import { path, .. } => assert_eq!(path, "helper"),
             other => panic!("expected Import, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_class_with_const_field_and_method() {
+        let stmts = parse(
+            "class Hello\n  const PI: Float = 3.14159\n  count: Integer\n\n  def initializer(number: Int)\n    count = number\n  end\nend",
+        );
+        match &stmts[0] {
+            Stmt::ClassDef {
+                name,
+                consts,
+                fields,
+                methods,
+                ..
+            } => {
+                assert_eq!(name, "Hello");
+                assert_eq!(consts.len(), 1);
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0].name, "count");
+                assert_eq!(fields[0].type_ann.name, "Integer");
+                assert_eq!(methods.len(), 1);
+                match &methods[0] {
+                    Stmt::FunctionDef {
+                        name: mname,
+                        params,
+                        ..
+                    } => {
+                        assert_eq!(mname, "initializer");
+                        assert_eq!(params.len(), 1);
+                    }
+                    other => panic!("expected FunctionDef, got {other:?}"),
+                }
+            }
+            other => panic!("expected ClassDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_new_field_access_and_method_call() {
+        let stmts = parse("h = Hello.new(5)\nx = h.count\nh.greet(\"hi\")\nh.count = 9");
+        match &stmts[0] {
+            Stmt::VarDecl {
+                value:
+                    Expr::MethodCall {
+                        method,
+                        args,
+                        object,
+                        ..
+                    },
+                ..
+            } => {
+                assert_eq!(method, "new");
+                assert_eq!(args.len(), 1);
+                assert!(matches!(**object, Expr::Ident { .. }));
+            }
+            other => panic!("expected MethodCall VarDecl, got {other:?}"),
+        }
+        match &stmts[1] {
+            Stmt::VarDecl {
+                value: Expr::FieldAccess { field, .. },
+                ..
+            } => assert_eq!(field, "count"),
+            other => panic!("expected FieldAccess VarDecl, got {other:?}"),
+        }
+        match &stmts[2] {
+            Stmt::ExprStmt(Expr::MethodCall { method, args, .. }) => {
+                assert_eq!(method, "greet");
+                assert_eq!(args.len(), 1);
+            }
+            other => panic!("expected MethodCall ExprStmt, got {other:?}"),
+        }
+        match &stmts[3] {
+            Stmt::FieldAssign { field, .. } => assert_eq!(field, "count"),
+            other => panic!("expected FieldAssign, got {other:?}"),
         }
     }
 }
