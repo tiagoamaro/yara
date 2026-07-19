@@ -299,6 +299,8 @@ impl TypeChecker {
                 self.check_expr(expr)?;
                 Ok(())
             }
+            // Resolved away by `resolver` before typechecking ever sees the program.
+            Stmt::Import { .. } => Ok(()),
         }
     }
 
@@ -535,7 +537,8 @@ fn stmt_line(stmt: &Stmt) -> usize {
         | Stmt::Return { line, .. }
         | Stmt::If { line, .. }
         | Stmt::While { line, .. }
-        | Stmt::For { line, .. } => *line,
+        | Stmt::For { line, .. }
+        | Stmt::Import { line, .. } => *line,
         Stmt::ExprStmt(expr) => expr.line(),
     }
 }
@@ -548,7 +551,8 @@ fn stmt_column(stmt: &Stmt) -> usize {
         | Stmt::Return { column, .. }
         | Stmt::If { column, .. }
         | Stmt::While { column, .. }
-        | Stmt::For { column, .. } => *column,
+        | Stmt::For { column, .. }
+        | Stmt::Import { column, .. } => *column,
         Stmt::ExprStmt(expr) => expr.column(),
     }
 }

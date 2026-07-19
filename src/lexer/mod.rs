@@ -23,6 +23,7 @@ pub enum TokenKind {
     Const,
     Return,
     Nil,
+    Import,
 
     // operators / punctuation
     Plus,
@@ -261,6 +262,7 @@ impl Lexer {
             "in" => TokenKind::In,
             "const" => TokenKind::Const,
             "return" => TokenKind::Return,
+            "import" => TokenKind::Import,
             "nil" => TokenKind::Nil,
             "true" => TokenKind::Bool(true),
             "false" => TokenKind::Bool(false),

@@ -4,6 +4,7 @@ mod ast;
 mod interpreter;
 mod lexer;
 mod parser;
+mod resolver;
 mod typechecker;
 
 use interpreter::Interpreter;
@@ -49,6 +50,14 @@ fn run_file(path: &str) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("parse error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let program = match resolver::resolve_imports(program, std::path::Path::new(path)) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("import error: {e}");
             std::process::exit(1);
         }
     };

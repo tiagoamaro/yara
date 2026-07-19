@@ -3,12 +3,17 @@
 Sample `.yara` programs, used to exercise the language as each compiler stage lands.
 
 ## Status
-All three examples run end-to-end via `cargo run -- run examples/<file>.yara` (verified 2026-07-18).
+All examples run end-to-end via `cargo run -- run examples/<file>.yara` (verified 2026-07-18, including `kitchen_sink.yara`).
 
 ## Files
 - `hello.yara` — smallest possible program.
 - `functions.yara` — function definitions and calls.
 - `types.yara` — base type declarations (Int/Integer, Float, Bool/Boolean, Str/String).
+- `control_flow.yara` — `if`/`elsif`/`else` used as a function's tail expression, unary negation.
+- `loops.yara` — `for x in a..b` and `while`.
+- `recursion.yara` — `factorial`, exercising a function calling itself and `if`/`else` as tail return.
+- `constants.yara` — `const` decls and a function reading an outer const.
+- `kitchen_sink.yara` — imports every other example file (`import "name"`, no `.yara` extension needed) to exercise the whole language in one run; demonstrates the `resolver` (see `src/resolver/CLAUDE.md`).
 
 ## Gotchas
-(none yet — update as discovered)
+- `import` paths are relative to the importing file's own directory and resolved at `yara run` time (not a build step) — running `kitchen_sink.yara` from a different working directory still works because resolution is relative to the file, not cwd.
