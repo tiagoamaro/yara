@@ -16,6 +16,7 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 - `examples/` — sample `.yara` programs. See `examples/CLAUDE.md`.
 - `docs/syntax.md` — grammar notes, updated as syntax stabilizes.
 - `docs/architecture.md` — Mermaid-diagrammed walkthrough of the real pipeline and each stage's internal control flow, for anyone studying how this compiler/interpreter is built. Every function in `src/` also carries a `///` doc comment explaining its mechanics (not just its name) — keep both in sync when changing a stage's algorithm, not just its behavior.
+- `editors/vscode-yara/` — VS Code syntax highlighting (TextMate grammar), no LSP/diagnostics. Not part of the Rust build; keep its keyword/type lists in sync with `src/lexer/mod.rs` if either changes. See its own `CLAUDE.md`.
 
 ## Conventions
 

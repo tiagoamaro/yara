@@ -1,0 +1,88 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Yara",
+  "scopeName": "source.yara",
+  "fileTypes": ["yara"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#class-decl" },
+    { "include": "#function-decl" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#types" },
+    { "include": "#dotted-access" },
+    { "include": "#function-call" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.yara"
+    },
+    "strings": {
+      "name": "string.quoted.double.yara",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "match": "\\\\[ntr\"\\\\]",
+          "name": "constant.character.escape.yara"
+        },
+        {
+          "match": "\\\\.",
+          "name": "invalid.illegal.unrecognized-escape.yara"
+        }
+      ]
+    },
+    "numbers": {
+      "match": "\\b\\d+(\\.\\d+)?\\b",
+      "name": "constant.numeric.yara"
+    },
+    "class-decl": {
+      "comment": "`class Name` — captures the class keyword and its name separately so the name gets entity.name.type.class rather than falling through to a generic identifier.",
+      "match": "\\b(class)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.yara" },
+        "2": { "name": "entity.name.type.class.yara" }
+      }
+    },
+    "function-decl": {
+      "comment": "`def name` — same idea as class-decl, for function/method definitions (including `initializer`).",
+      "match": "\\b(def)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.yara" },
+        "2": { "name": "entity.name.function.yara" }
+      }
+    },
+    "keywords": {
+      "match": "\\b(def|end|if|elsif|else|while|for|in|const|return|import|class)\\b",
+      "name": "keyword.control.yara"
+    },
+    "constants": {
+      "match": "\\b(true|false|nil)\\b",
+      "name": "constant.language.yara"
+    },
+    "types": {
+      "comment": "Matches lexer::normalize_type_alias's short/long pairs plus the concrete array type names (see typechecker::Type::from_annotation_name) — a capitalized identifier that isn't one of these is still heuristically a class name used as a type, but that can't be distinguished from a class-name expression by regex alone, so it's left as a plain identifier here.",
+      "match": "\\b(Int|Integer|Float|Bool|Boolean|Str|String|Nil|IntArray|FloatArray|BoolArray|StringArray)\\b",
+      "name": "support.type.yara"
+    },
+    "dotted-access": {
+      "comment": "`.name` after any expression — covers both field access (obj.field) and method calls (obj.method(...)); TextMate has no way to tell those apart from a call's argument list alone, so both get the same scope.",
+      "match": "\\.([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "variable.other.member.yara" }
+      }
+    },
+    "function-call": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+      "name": "entity.name.function.yara"
+    },
+    "operators": {
+      "match": "(==|!=|<=|>=|:=|\\.\\.|[+\\-*/<>=:.])",
+      "name": "keyword.operator.yara"
+    }
+  }
+}
