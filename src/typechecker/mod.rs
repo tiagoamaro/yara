@@ -12,6 +12,8 @@ pub enum Type {
     String,
     Nil,
     Array(Box<Type>),
+    /// An instance of a user-defined `class`, identified by class name.
+    Instance(String),
 }
 
 impl fmt::Display for Type {
@@ -23,6 +25,7 @@ impl fmt::Display for Type {
             Type::String => write!(f, "String"),
             Type::Nil => write!(f, "Nil"),
             Type::Array(elem) => write!(f, "Array<{elem}>"),
+            Type::Instance(name) => write!(f, "{name}"),
         }
     }
 }
@@ -66,6 +69,14 @@ struct FunctionSig {
     return_type: Option<Type>,
 }
 
+/// A class's field types (instance vars + consts, both accessible unqualified
+/// inside methods via implicit `self`) and its method signatures.
+#[derive(Clone)]
+struct ClassInfo {
+    fields: HashMap<String, Type>,
+    methods: HashMap<String, FunctionSig>,
+}
+
 struct Scope {
     vars: HashMap<String, Type>,
 }
@@ -73,6 +84,7 @@ struct Scope {
 pub struct TypeChecker {
     scopes: Vec<Scope>,
     functions: HashMap<String, FunctionSig>,
+    classes: HashMap<String, ClassInfo>,
 }
 
 impl Default for TypeChecker {
@@ -88,13 +100,160 @@ impl TypeChecker {
                 vars: HashMap::new(),
             }],
             functions: HashMap::new(),
+            classes: HashMap::new(),
         }
     }
 
     pub fn check_program(&mut self, program: &[Stmt]) -> Result<(), TypeError> {
+        self.collect_classes(program)?;
         self.collect_function_signatures(program)?;
+        self.check_classes(program)?;
         for stmt in program {
             self.check_stmt(stmt)?;
+        }
+        Ok(())
+    }
+
+    fn collect_classes(&mut self, program: &[Stmt]) -> Result<(), TypeError> {
+        // Pre-register every class name (with an empty placeholder) first, so
+        // field/param/return type annotations can name any class regardless
+        // of declaration order (including a class referencing itself).
+        for stmt in program {
+            if let Stmt::ClassDef { name, .. } = stmt {
+                self.classes.entry(name.clone()).or_insert(ClassInfo {
+                    fields: HashMap::new(),
+                    methods: HashMap::new(),
+                });
+            }
+        }
+
+        for stmt in program {
+            let Stmt::ClassDef {
+                name,
+                consts,
+                fields,
+                methods,
+                ..
+            } = stmt
+            else {
+                continue;
+            };
+
+            let mut field_types = HashMap::new();
+            for c in consts {
+                let Stmt::ConstDecl {
+                    name: cname,
+                    type_ann,
+                    line,
+                    column,
+                    ..
+                } = c
+                else {
+                    unreachable!("parser only ever puts ConstDecl in ClassDef.consts")
+                };
+                let Some(ann) = type_ann else {
+                    return Err(TypeError {
+                        message: "class constants require an explicit type annotation".to_string(),
+                        line: *line,
+                        column: *column,
+                    });
+                };
+                let ty = self.resolve_type(&ann.name, ann.line, ann.column)?;
+                field_types.insert(cname.clone(), ty);
+            }
+            for f in fields {
+                let ty = self.resolve_type(&f.type_ann.name, f.line, f.column)?;
+                field_types.insert(f.name.clone(), ty);
+            }
+
+            let mut method_sigs = HashMap::new();
+            for m in methods {
+                let Stmt::FunctionDef {
+                    name: mname,
+                    params,
+                    return_type,
+                    line,
+                    column,
+                    ..
+                } = m
+                else {
+                    unreachable!("parser only ever puts FunctionDef in ClassDef.methods")
+                };
+                let mut param_types = Vec::new();
+                for p in params {
+                    param_types.push(self.resolve_type(&p.type_ann.name, p.line, p.column)?);
+                }
+                let ret = match return_type {
+                    Some(t) => Some(self.resolve_type(&t.name, *line, *column)?),
+                    None => None,
+                };
+                method_sigs.insert(
+                    mname.clone(),
+                    FunctionSig {
+                        param_types,
+                        return_type: ret,
+                    },
+                );
+            }
+
+            self.classes.insert(
+                name.clone(),
+                ClassInfo {
+                    fields: field_types,
+                    methods: method_sigs,
+                },
+            );
+        }
+        Ok(())
+    }
+
+    /// Type-checks every class method body (including `initializer`), with
+    /// the class's fields/consts pre-declared in the method's scope so bare
+    /// names resolve to them (implicit `self`, Ruby-ivar style).
+    fn check_classes(&mut self, program: &[Stmt]) -> Result<(), TypeError> {
+        for stmt in program {
+            let Stmt::ClassDef { name, methods, .. } = stmt else {
+                continue;
+            };
+            let field_types = self.classes[name].fields.clone();
+            for m in methods {
+                let Stmt::FunctionDef {
+                    params,
+                    body,
+                    return_type,
+                    ..
+                } = m
+                else {
+                    unreachable!("parser only ever puts FunctionDef in ClassDef.methods")
+                };
+                self.push_scope();
+                for (fname, fty) in &field_types {
+                    self.declare_var(fname, fty.clone());
+                }
+                for p in params {
+                    let ty = self.resolve_type(&p.type_ann.name, p.line, p.column)?;
+                    self.declare_var(&p.name, ty);
+                }
+                let declared_return = match return_type {
+                    Some(t) => Some(self.resolve_type(&t.name, t.line, t.column)?),
+                    None => None,
+                };
+                let actual_return = self.check_body_return_type(body)?;
+                if let (Some(declared), Some(actual)) = (&declared_return, &actual_return) {
+                    if declared != actual {
+                        self.pop_scope();
+                        return Err(TypeError {
+                            message: format!(
+                                "method `{name}#{}` declared to return `{declared}`, but returns `{actual}`",
+                                method_name(m)
+                            ),
+                            line: stmt_line(m),
+                            column: stmt_column(m),
+                        });
+                    }
+                }
+                self.pop_scope();
+            }
         }
         Ok(())
     }
@@ -131,6 +290,9 @@ impl TypeChecker {
     }
 
     fn resolve_type(&self, name: &str, line: usize, column: usize) -> Result<Type, TypeError> {
+        if self.classes.contains_key(name) {
+            return Ok(Type::Instance(name.to_string()));
+        }
         Type::from_annotation_name(name).ok_or_else(|| TypeError {
             message: format!("unknown type `{name}`"),
             line,
@@ -318,7 +480,58 @@ impl TypeChecker {
             }
             // Resolved away by `resolver` before typechecking ever sees the program.
             Stmt::Import { .. } => Ok(()),
+            // Already fully checked by `collect_classes`/`check_classes` in `check_program`.
+            Stmt::ClassDef { .. } => Ok(()),
+            Stmt::FieldAssign {
+                object,
+                field,
+                value,
+                line,
+                column,
+            } => {
+                let field_ty = self.check_field_access(object, field, *line, *column)?;
+                let value_ty = self.check_expr(value)?;
+                if field_ty != value_ty {
+                    return Err(TypeError {
+                        message: format!(
+                            "cannot assign `{value_ty}` to field `{field}` of type `{field_ty}`"
+                        ),
+                        line: *line,
+                        column: *column,
+                    });
+                }
+                Ok(())
+            }
         }
+    }
+
+    /// Shared by `Expr::FieldAccess` and `Stmt::FieldAssign`: resolves
+    /// `object.field`'s type, erroring if `object` isn't a class instance or
+    /// the class has no such field.
+    fn check_field_access(
+        &mut self,
+        object: &Expr,
+        field: &str,
+        line: usize,
+        column: usize,
+    ) -> Result<Type, TypeError> {
+        let object_ty = self.check_expr(object)?;
+        let Type::Instance(class_name) = &object_ty else {
+            return Err(TypeError {
+                message: format!("cannot access field `{field}` on `{object_ty}`"),
+                line,
+                column,
+            });
+        };
+        self.classes[class_name]
+            .fields
+            .get(field)
+            .cloned()
+            .ok_or_else(|| TypeError {
+                message: format!("class `{class_name}` has no field `{field}`"),
+                line,
+                column,
+            })
     }
 
     fn check_block(&mut self, body: &[Stmt]) -> Result<(), TypeError> {
@@ -554,7 +767,123 @@ impl TypeChecker {
                     }),
                 }
             }
+            Expr::FieldAccess {
+                object,
+                field,
+                line,
+                column,
+            } => self.check_field_access(object, field, *line, *column),
+            Expr::MethodCall {
+                object,
+                method,
+                args,
+                line,
+                column,
+            } => self.check_method_call(object, method, args, *line, *column),
         }
+    }
+
+    /// Handles both `ClassName.new(args)` (when `object` is a bare `Ident`
+    /// naming a class rather than a bound variable) and ordinary
+    /// `instance.method(args)` calls.
+    fn check_method_call(
+        &mut self,
+        object: &Expr,
+        method: &str,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<Type, TypeError> {
+        if let Expr::Ident { name, .. } = object {
+            if self.lookup_var(name).is_none() && self.classes.contains_key(name) {
+                return self.check_construction(name, method, args, line, column);
+            }
+        }
+
+        let object_ty = self.check_expr(object)?;
+        let Type::Instance(class_name) = &object_ty else {
+            return Err(TypeError {
+                message: format!("cannot call method `{method}` on `{object_ty}`"),
+                line,
+                column,
+            });
+        };
+        let sig = self.classes[class_name]
+            .methods
+            .get(method)
+            .cloned()
+            .ok_or_else(|| TypeError {
+                message: format!("class `{class_name}` has no method `{method}`"),
+                line,
+                column,
+            })?;
+        self.check_call_args(&format!("{class_name}#{method}"), &sig, args, line, column)?;
+        Ok(sig.return_type.unwrap_or(Type::Nil))
+    }
+
+    fn check_construction(
+        &mut self,
+        class_name: &str,
+        method: &str,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<Type, TypeError> {
+        if method != "new" {
+            return Err(TypeError {
+                message: format!("class `{class_name}` has no static method `{method}`"),
+                line,
+                column,
+            });
+        }
+        match self.classes[class_name].methods.get("initializer").cloned() {
+            Some(sig) => {
+                self.check_call_args(&format!("{class_name}.new"), &sig, args, line, column)?;
+            }
+            None if !args.is_empty() => {
+                return Err(TypeError {
+                    message: format!(
+                        "class `{class_name}` has no initializer, so `.new` takes no arguments"
+                    ),
+                    line,
+                    column,
+                });
+            }
+            None => {}
+        }
+        Ok(Type::Instance(class_name.to_string()))
+    }
+
+    fn check_call_args(
+        &mut self,
+        what: &str,
+        sig: &FunctionSig,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<(), TypeError> {
+        if args.len() != sig.param_types.len() {
+            return Err(TypeError {
+                message: format!(
+                    "`{what}` expects {} argument(s), found {}",
+                    sig.param_types.len(),
+                    args.len()
+                ),
+                line,
+                column,
+            });
+        }
+        for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
+            let arg_ty = self.check_expr(arg)?;
+            if arg_ty != *expected {
+                return Err(TypeError {
+                    message: format!("argument to `{what}` expects `{expected}`, found `{arg_ty}`"),
+                    line: arg.line(),
+                    column: arg.column(),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Type-checks `len`/`push`/`get`/`set` if `callee` names one of them, returning
@@ -748,7 +1077,9 @@ fn stmt_line(stmt: &Stmt) -> usize {
         | Stmt::If { line, .. }
         | Stmt::While { line, .. }
         | Stmt::For { line, .. }
-        | Stmt::Import { line, .. } => *line,
+        | Stmt::Import { line, .. }
+        | Stmt::ClassDef { line, .. }
+        | Stmt::FieldAssign { line, .. } => *line,
         Stmt::ExprStmt(expr) => expr.line(),
     }
 }
@@ -762,8 +1093,17 @@ fn stmt_column(stmt: &Stmt) -> usize {
         | Stmt::If { column, .. }
         | Stmt::While { column, .. }
         | Stmt::For { column, .. }
-        | Stmt::Import { column, .. } => *column,
+        | Stmt::Import { column, .. }
+        | Stmt::ClassDef { column, .. }
+        | Stmt::FieldAssign { column, .. } => *column,
         Stmt::ExprStmt(expr) => expr.column(),
+    }
+}
+
+fn method_name(method: &Stmt) -> &str {
+    match method {
+        Stmt::FunctionDef { name, .. } => name,
+        _ => "?",
     }
 }
 
@@ -885,5 +1225,41 @@ mod tests {
     fn index_requires_integer() {
         let err = check("xs: IntArray = [1]\ny = xs[\"zero\"]").unwrap_err();
         assert!(err.message.contains("must be Integer"));
+    }
+
+    const HELLO_CLASS: &str = "class Hello\n  const PI: Float = 3.14159\n  count: Integer\n\n  def initializer(number: Int)\n    count = number\n  end\nend\n";
+
+    #[test]
+    fn class_construction_field_access_and_method_call() {
+        let src =
+            format!("{HELLO_CLASS}h: Hello = Hello.new(5)\nx: Int = h.count\ny: Float = h.PI");
+        assert!(check(&src).is_ok());
+    }
+
+    #[test]
+    fn class_field_assignment_type_checked() {
+        let src = format!("{HELLO_CLASS}h = Hello.new(5)\nh.count = 9");
+        assert!(check(&src).is_ok());
+        let src_bad = format!("{HELLO_CLASS}h = Hello.new(5)\nh.count = \"oops\"");
+        let err = check(&src_bad).unwrap_err();
+        assert!(err.message.contains("cannot assign"));
+    }
+
+    #[test]
+    fn class_unknown_field_and_method_are_errors() {
+        let src = format!("{HELLO_CLASS}h = Hello.new(5)\nx = h.missing");
+        let err = check(&src).unwrap_err();
+        assert!(err.message.contains("has no field"));
+
+        let src2 = format!("{HELLO_CLASS}h = Hello.new(5)\nh.missing_method()");
+        let err2 = check(&src2).unwrap_err();
+        assert!(err2.message.contains("has no method"));
+    }
+
+    #[test]
+    fn class_new_arg_count_checked() {
+        let src = format!("{HELLO_CLASS}h = Hello.new(5, 6)");
+        let err = check(&src).unwrap_err();
+        assert!(err.message.contains("expects 1 argument"));
     }
 }

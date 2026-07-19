@@ -18,6 +18,10 @@ pub enum Value {
     /// mutating it there (`push`/`set`) is visible to the caller — needed for
     /// arena-style linked lists/trees/graphs built out of arrays of indices.
     Array(Rc<RefCell<Vec<Value>>>),
+    /// A `class` instance: field name -> value (consts and instance vars
+    /// share this one map), plus the class name for method dispatch.
+    /// Reference semantics, same rationale as `Array`.
+    Instance(Rc<RefCell<HashMap<String, Value>>>, String),
 }
 
 impl fmt::Display for Value {
@@ -38,6 +42,7 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Instance(_, class_name) => write!(f, "#<{class_name}>"),
         }
     }
 }
@@ -78,6 +83,15 @@ struct FunctionDecl {
     body: Vec<Stmt>,
 }
 
+#[derive(Debug, Clone)]
+struct ClassDecl {
+    /// `(name, value_expr)` for each class const, evaluated once per `new`.
+    const_inits: Vec<(String, Expr)>,
+    /// Instance-var names declared with no value (start out `Nil`).
+    field_names: Vec<String>,
+    methods: HashMap<String, FunctionDecl>,
+}
+
 enum Flow {
     Normal,
     Return(Value),
@@ -92,6 +106,7 @@ struct Scope {
 pub struct Interpreter {
     scopes: Vec<Scope>,
     functions: HashMap<String, FunctionDecl>,
+    classes: HashMap<String, ClassDecl>,
     call_stack: Vec<StackFrame>,
 }
 
@@ -108,6 +123,7 @@ impl Interpreter {
                 vars: HashMap::new(),
             }],
             functions: HashMap::new(),
+            classes: HashMap::new(),
             call_stack: Vec::new(),
         }
     }
@@ -123,6 +139,46 @@ impl Interpreter {
                     FunctionDecl {
                         params: params.iter().map(|p| p.name.clone()).collect(),
                         body: body.clone(),
+                    },
+                );
+            }
+            if let Stmt::ClassDef {
+                name,
+                consts,
+                fields,
+                methods,
+                ..
+            } = stmt
+            {
+                let const_inits = consts
+                    .iter()
+                    .filter_map(|c| match c {
+                        Stmt::ConstDecl { name, value, .. } => Some((name.clone(), value.clone())),
+                        _ => None,
+                    })
+                    .collect();
+                let field_names = fields.iter().map(|f| f.name.clone()).collect();
+                let method_decls = methods
+                    .iter()
+                    .filter_map(|m| match m {
+                        Stmt::FunctionDef {
+                            name, params, body, ..
+                        } => Some((
+                            name.clone(),
+                            FunctionDecl {
+                                params: params.iter().map(|p| p.name.clone()).collect(),
+                                body: body.clone(),
+                            },
+                        )),
+                        _ => None,
+                    })
+                    .collect();
+                self.classes.insert(
+                    name.clone(),
+                    ClassDecl {
+                        const_inits,
+                        field_names,
+                        methods: method_decls,
                     },
                 );
             }
@@ -245,6 +301,28 @@ impl Interpreter {
             }
             // Resolved away by `resolver` before the interpreter ever sees the program.
             Stmt::Import { .. } => Ok(Flow::Normal),
+            // Registered into `self.classes` up front in `run_program`.
+            Stmt::ClassDef { .. } => Ok(Flow::Normal),
+            Stmt::FieldAssign {
+                object,
+                field,
+                value,
+                line,
+                column,
+            } => {
+                let object_val = self.eval_expr(object)?;
+                let value_val = self.eval_expr(value)?;
+                let Value::Instance(fields, _) = object_val else {
+                    return Err(RuntimeError {
+                        message: format!("cannot assign field `{field}` on a non-object value"),
+                        line: *line,
+                        column: *column,
+                        call_stack: self.call_stack.clone(),
+                    });
+                };
+                fields.borrow_mut().insert(field.clone(), value_val);
+                Ok(Flow::Normal)
+            }
         }
     }
 
@@ -346,7 +424,176 @@ impl Interpreter {
                 let idx = self.eval_int(index, *line, *column)?;
                 self.array_get(&array_val, idx, *line, *column)
             }
+            Expr::FieldAccess {
+                object,
+                field,
+                line,
+                column,
+            } => {
+                let object_val = self.eval_expr(object)?;
+                let Value::Instance(fields, class_name) = &object_val else {
+                    return Err(RuntimeError {
+                        message: format!("cannot access field `{field}` on a non-object value"),
+                        line: *line,
+                        column: *column,
+                        call_stack: self.call_stack.clone(),
+                    });
+                };
+                let found = fields.borrow().get(field).cloned();
+                found.ok_or_else(|| RuntimeError {
+                    message: format!("class `{class_name}` has no field `{field}`"),
+                    line: *line,
+                    column: *column,
+                    call_stack: self.call_stack.clone(),
+                })
+            }
+            Expr::MethodCall {
+                object,
+                method,
+                args,
+                line,
+                column,
+            } => {
+                if let Expr::Ident { name, .. } = &**object {
+                    if self.lookup_var(name).is_none() && self.classes.contains_key(name) {
+                        return self.construct(name, args, *line, *column);
+                    }
+                }
+                let object_val = self.eval_expr(object)?;
+                self.call_method(object_val, method, args, *line, *column)
+            }
         }
+    }
+
+    /// `ClassName.new(args)`: builds a fresh instance, evaluates each class
+    /// const in declaration order (so a later const may reference an earlier
+    /// one), zero-initializes declared fields to `Nil`, then runs
+    /// `initializer` (if the class has one) with `args` bound to its params.
+    fn construct(
+        &mut self,
+        class_name: &str,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<Value, RuntimeError> {
+        let decl = self.classes[class_name].clone();
+        let fields: Rc<RefCell<HashMap<String, Value>>> = Rc::new(RefCell::new(HashMap::new()));
+
+        self.call_stack.push(StackFrame {
+            function_name: format!("{class_name}.new"),
+            line,
+            column,
+        });
+        self.push_scope();
+        for (const_name, expr) in &decl.const_inits {
+            for (k, v) in fields.borrow().iter() {
+                self.declare_var(k, v.clone());
+            }
+            let value = self.eval_expr(expr)?;
+            fields.borrow_mut().insert(const_name.clone(), value);
+        }
+        self.pop_scope();
+
+        for field_name in &decl.field_names {
+            fields.borrow_mut().insert(field_name.clone(), Value::Nil);
+        }
+        self.call_stack.pop();
+
+        let instance = Value::Instance(fields, class_name.to_string());
+        if let Some(initializer) = decl.methods.get("initializer") {
+            self.run_method(
+                &instance,
+                "initializer",
+                initializer.clone(),
+                args,
+                line,
+                column,
+            )?;
+        }
+        Ok(instance)
+    }
+
+    fn call_method(
+        &mut self,
+        object_val: Value,
+        method: &str,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Instance(_, class_name) = &object_val else {
+            return Err(RuntimeError {
+                message: format!("cannot call method `{method}` on a non-object value"),
+                line,
+                column,
+                call_stack: self.call_stack.clone(),
+            });
+        };
+        let decl = self.classes[class_name]
+            .methods
+            .get(method)
+            .cloned()
+            .ok_or_else(|| RuntimeError {
+                message: format!("class `{class_name}` has no method `{method}`"),
+                line,
+                column,
+                call_stack: self.call_stack.clone(),
+            })?;
+        self.run_method(&object_val, method, decl, args, line, column)
+    }
+
+    /// Runs a method body with the instance's fields copied into the method's
+    /// scope (so bare names resolve as implicit `self.field`), then copies
+    /// any updated field values back into the instance afterward.
+    fn run_method(
+        &mut self,
+        instance: &Value,
+        method_name: &str,
+        decl: FunctionDecl,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Instance(fields, class_name) = instance else {
+            unreachable!("run_method always called with a Value::Instance")
+        };
+        let arg_values = args
+            .iter()
+            .map(|a| self.eval_expr(a))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        self.call_stack.push(StackFrame {
+            function_name: format!("{class_name}#{method_name}"),
+            line,
+            column,
+        });
+        self.push_scope();
+        let field_snapshot: Vec<(String, Value)> = fields
+            .borrow()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        for (k, v) in &field_snapshot {
+            self.declare_var(k, v.clone());
+        }
+        for (pname, pval) in decl.params.iter().zip(arg_values) {
+            self.declare_var(pname, pval);
+        }
+
+        let result = self.exec_function_body(&decl.body);
+
+        {
+            let mut fields_mut = fields.borrow_mut();
+            let current_scope = &self.scopes.last().unwrap().vars;
+            for (k, _) in &field_snapshot {
+                if let Some(updated) = current_scope.get(k) {
+                    fields_mut.insert(k.clone(), updated.clone());
+                }
+            }
+        }
+        self.pop_scope();
+        self.call_stack.pop();
+        result
     }
 
     fn array_get(
@@ -770,5 +1017,38 @@ mod tests {
     fn pop_from_empty_array_is_runtime_error() {
         let err = run("xs: IntArray = []\ny = pop(xs)").unwrap_err();
         assert!(err.message.contains("empty array"));
+    }
+
+    const HELLO_CLASS: &str = "class Hello\n  const PI: Float = 3.14159\n  count: Integer\n\n  def initializer(number: Int)\n    count = number\n  end\n\n  def area(radius: Float): Float\n    PI * radius * radius\n  end\nend\n";
+
+    #[test]
+    fn class_construction_and_field_read() {
+        let interp = run(&format!(
+            "{HELLO_CLASS}h = Hello.new(5)\nx = h.count\ny = h.PI"
+        ))
+        .unwrap();
+        assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(5)));
+        assert_eq!(interp.lookup_var("y"), Some(&Value::Float(3.14159)));
+    }
+
+    #[test]
+    fn class_field_assignment_and_method_call() {
+        let interp = run(&format!(
+            "{HELLO_CLASS}h = Hello.new(5)\nh.count = 10\nx = h.count\ny = h.area(2.0)"
+        ))
+        .unwrap();
+        assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(10)));
+        assert_eq!(interp.lookup_var("y"), Some(&Value::Float(12.56636)));
+    }
+
+    #[test]
+    fn class_instances_have_reference_semantics() {
+        // Mutating a field through one binding is visible through another
+        // binding of the same instance (like arrays; see Value::Instance).
+        let interp = run(&format!(
+            "{HELLO_CLASS}h = Hello.new(1)\nalias = h\nalias.count = 42\nx = h.count"
+        ))
+        .unwrap();
+        assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(42)));
     }
 }

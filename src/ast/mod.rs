@@ -16,6 +16,16 @@ pub struct Param {
     pub column: usize,
 }
 
+/// A class instance-variable declaration (`count: Integer`, no value —
+/// instance vars start out unset and are given a value in `initializer`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDecl {
+    pub name: String,
+    pub type_ann: TypeAnnotation,
+    pub line: usize,
+    pub column: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     IntLit {
@@ -77,6 +87,23 @@ pub enum Expr {
         line: usize,
         column: usize,
     },
+    /// `object.field` — reading an instance variable or class constant.
+    FieldAccess {
+        object: Box<Expr>,
+        field: String,
+        line: usize,
+        column: usize,
+    },
+    /// `object.method(args)`. Also covers `ClassName.new(args)` construction:
+    /// the typechecker/interpreter special-case a bare `Ident` `object` that
+    /// names a known class rather than a variable, with `method == "new"`.
+    MethodCall {
+        object: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+        line: usize,
+        column: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -97,7 +124,9 @@ impl Expr {
             | Expr::Call { line, .. }
             | Expr::Unary { line, .. }
             | Expr::ArrayLit { line, .. }
-            | Expr::Index { line, .. } => *line,
+            | Expr::Index { line, .. }
+            | Expr::FieldAccess { line, .. }
+            | Expr::MethodCall { line, .. } => *line,
         }
     }
 
@@ -113,7 +142,9 @@ impl Expr {
             | Expr::Call { column, .. }
             | Expr::Unary { column, .. }
             | Expr::ArrayLit { column, .. }
-            | Expr::Index { column, .. } => *column,
+            | Expr::Index { column, .. }
+            | Expr::FieldAccess { column, .. }
+            | Expr::MethodCall { column, .. } => *column,
         }
     }
 }
@@ -186,6 +217,25 @@ pub enum Stmt {
     ExprStmt(Expr),
     Import {
         path: String,
+        line: usize,
+        column: usize,
+    },
+    /// `class Name ... end`. `consts` holds only `Stmt::ConstDecl` entries,
+    /// `methods` only `Stmt::FunctionDef` entries (including `initializer`)
+    /// — reusing those variants rather than inventing near-duplicates.
+    ClassDef {
+        name: String,
+        consts: Vec<Stmt>,
+        fields: Vec<FieldDecl>,
+        methods: Vec<Stmt>,
+        line: usize,
+        column: usize,
+    },
+    /// `object.field = value`.
+    FieldAssign {
+        object: Expr,
+        field: String,
+        value: Expr,
         line: usize,
         column: usize,
     },
