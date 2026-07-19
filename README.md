@@ -10,7 +10,7 @@ Yara is a learning-focused programming language: strongly typed, compiled, with 
 
 ## Status
 
-Early bootstrap. Interpreter-first milestone in progress. See `CLAUDE.md` for the current project map and each subfolder's `CLAUDE.md` for stage-specific status.
+Interpreter-first milestone complete: lexer, parser, typechecker, and tree-walk interpreter all working, `yara run <file>` executes real `.yara` programs. See `CLAUDE.md` for the current project map and each subfolder's `CLAUDE.md` for stage-specific status.
 
 ## Syntax preview
 
@@ -43,5 +43,3 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 ```
 cargo run -- run examples/hello.yara
 ```
-
-(Not yet implemented — see milestones above.)
