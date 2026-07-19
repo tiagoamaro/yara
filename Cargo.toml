@@ -1,0 +1,8 @@
+[package]
+name = "yara"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "yara"
+path = "src/main.rs"
