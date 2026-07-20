@@ -54,7 +54,7 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 3. Typechecker
 4. Tree-walk interpreter
 5. Arrays, imports, classes
-6. Later: native compilation (LLVM/Cranelift) or C transpile; class inheritance/static methods; opt-in pointers
+6. Later: native compilation (LLVM/Cranelift) or C transpile; class inheritance/static methods; opt-in pointers + a teaching-focused garbage collector; configurable keyword translation (write `if`/`while`/`class` in another language) — see root `CLAUDE.md` TODO for design sketches
 
 ## Architecture
 
