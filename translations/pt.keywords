@@ -1,0 +1,20 @@
+# Portuguese keyword translation for Yara.
+# Format: canonical = localized (one per line, # starts a comment).
+# Only keywords listed here change spelling; anything omitted keeps its
+# default English spelling.
+
+def = funcao
+end = fim
+if = se
+elsif = senaose
+else = senao
+while = enquanto
+for = para
+in = em
+const = constante
+return = retorne
+import = importar
+class = classe
+nil = nulo
+true = verdadeiro
+false = falso

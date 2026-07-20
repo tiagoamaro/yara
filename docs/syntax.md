@@ -93,6 +93,10 @@ print(h.area(2.0))         # method call
 
 No inheritance, no class-level/static methods other than `.new`, no visibility modifiers — everything is public. Inside a method body, bare names resolve first to locals/params, then to the instance's own fields/consts (implicit `self`, no `self.`/`@` sigil needed) — this is why `count = number` inside `initializer` sets the instance variable rather than creating a local. Instance vars declared with no value (`count: Integer`) start out effectively unset until a method assigns them; reading one before that happens is a latent gap (see `src/typechecker/CLAUDE.md`). A class name doubles as its own type annotation (`h: Hello = ...`). Class instances have reference semantics like arrays: assigning `a = b` (both `Hello`) makes `a`/`b` alias the same instance.
 
+## Keyword translation
+
+`yara run <file> --keywords <path>` recognizes translated reserved-word spellings instead of the English defaults, e.g. `translations/pt.keywords` maps `if -> se`, `class -> classe`, `def -> funcao`, `end -> fim`, and so on. See `examples/translations/hello_pt.yara` for the same `class` example from above, rewritten in Portuguese. Only the fixed set of reserved words is translatable — type names (`Int`/`Integer`/...), identifiers, string contents, and error messages always stay in English. A translation file only needs to list the keywords it wants to change; anything omitted keeps its English spelling.
+
 ## Comments
 
 `# line comment`

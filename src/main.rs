@@ -5,6 +5,7 @@ mod interpreter;
 mod lexer;
 mod parser;
 mod resolver;
+mod translations;
 mod typechecker;
 
 use interpreter::Interpreter;
@@ -13,8 +14,9 @@ use parser::Parser;
 use typechecker::TypeChecker;
 
 /// CLI entry point. Parses `std::env::args()` and dispatches on the
-/// subcommand: only `yara run <file>` is supported, which hands `<file>` off
-/// to [`run_file`]. Any other invocation (missing subcommand, unknown
+/// subcommand: only `yara run <file> [--keywords <path>]` is supported,
+/// which hands `<file>` (and the optional keyword-translation file) off to
+/// [`run_file`]. Any other invocation (missing subcommand, unknown
 /// subcommand, or `run` with no file argument) prints a usage message to
 /// stderr and exits with status 1.
 fn main() {
@@ -22,16 +24,25 @@ fn main() {
     match args.get(1).map(String::as_str) {
         Some("run") => {
             let Some(path) = args.get(2) else {
-                eprintln!("usage: yara run <file>");
+                eprintln!("usage: yara run <file> [--keywords <path>]");
                 std::process::exit(1);
             };
-            run_file(path);
+            let keywords_path = parse_keywords_flag(&args[3..]);
+            run_file(path, keywords_path.as_deref());
         }
         _ => {
-            eprintln!("usage: yara run <file>");
+            eprintln!("usage: yara run <file> [--keywords <path>]");
             std::process::exit(1);
         }
     }
+}
+
+/// Scans the arguments following `<file>` for `--keywords <path>`, Yara's
+/// only optional flag. Hand-rolled rather than pulling in an args-parsing
+/// crate, matching the rest of the project's zero-dependency stance.
+fn parse_keywords_flag(rest: &[String]) -> Option<String> {
+    let pos = rest.iter().position(|a| a == "--keywords")?;
+    rest.get(pos + 1).cloned()
 }
 
 /// Runs the full pipeline on the file at `path`: read the source, then in
@@ -40,7 +51,13 @@ fn main() {
 /// [`print_error`] and the process exits with status 1 at the *first* stage
 /// that fails — later stages never run against a program that didn't pass
 /// the earlier ones.
-fn run_file(path: &str) {
+///
+/// `keywords_path`, if present, names a translation file (see
+/// `translations::parse_keyword_file`) whose keyword table the lexer uses
+/// instead of the English default — read and parsed *before* the source
+/// file itself, since a bad translation file should fail independently of
+/// whatever program it would have been applied to.
+fn run_file(path: &str, keywords_path: Option<&str>) {
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -49,7 +66,35 @@ fn run_file(path: &str) {
         }
     };
 
-    let tokens = match Lexer::new(&source).tokenize() {
+    let keywords = match keywords_path {
+        Some(kw_path) => {
+            let kw_text = match std::fs::read_to_string(kw_path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("error: cannot read `{kw_path}`: {e}");
+                    std::process::exit(1);
+                }
+            };
+            match translations::parse_keyword_file(&kw_text) {
+                Ok(k) => k,
+                Err(e) => {
+                    print_error(
+                        kw_path,
+                        &kw_text,
+                        "keyword translation error",
+                        &e.message,
+                        e.line,
+                        1,
+                        &[],
+                    );
+                    std::process::exit(1);
+                }
+            }
+        }
+        None => lexer::default_keywords(),
+    };
+
+    let tokens = match Lexer::with_keywords(&source, keywords).tokenize() {
         Ok(t) => t,
         Err(e) => {
             print_error(
