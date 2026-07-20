@@ -10,7 +10,7 @@ Yara is a learning-focused programming language: strongly typed, compiled, with 
 
 ## Status
 
-Interpreter-first milestone complete and then some: lexer, parser, typechecker, and tree-walk interpreter all working, `yara run <file>` executes real `.yara` programs. Since the initial milestone: unary negation, `if`/`elsif`/`else` as a function's tail expression, file `import`, an `Array` type (`IntArray`/`FloatArray`/`BoolArray`/`StringArray` with indexing and `len`/`push`/`pop`/`get`/`set`), and `class` declarations (no inheritance). See `CLAUDE.md` for the current project map and each subfolder's `CLAUDE.md` for stage-specific status.
+Interpreter-first milestone complete and then some: lexer, parser, typechecker, and tree-walk interpreter all working, `yara run <file>` executes real `.yara` programs. Since the initial milestone: unary negation, `if`/`elsif`/`else` as a function's tail expression, file `import`, an `Array` type (`IntArray`/`FloatArray`/`BoolArray`/`StringArray` with indexing and `len`/`push`/`pop`/`get`/`set`), `class` declarations (no inheritance), and configurable keyword translation (`--keywords <path>`). See `CLAUDE.md` for the current project map and each subfolder's `CLAUDE.md` for stage-specific status.
 
 ## Syntax preview
 
@@ -53,8 +53,8 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 2. AST + parser
 3. Typechecker
 4. Tree-walk interpreter
-5. Arrays, imports, classes
-6. Later: native compilation (LLVM/Cranelift) or C transpile; class inheritance/static methods; opt-in pointers + a teaching-focused garbage collector; configurable keyword translation (write `if`/`while`/`class` in another language) — see root `CLAUDE.md` TODO for design sketches
+5. Arrays, imports, classes, configurable keyword translation
+6. Later: native compilation (LLVM/Cranelift) or C transpile; class inheritance/static methods; opt-in pointers + a teaching-focused garbage collector — see root `CLAUDE.md` TODO for design sketches
 
 ## Architecture
 
@@ -67,6 +67,11 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 - `data_structures/` — list, stack, queue, linked list, binary tree, graph (arena-style, built on arrays).
 - `objects/` — `class` usage.
 - `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace.
+- `translations/` — the same `class` example, written with Portuguese keywords (`--keywords translations/pt.keywords`).
+
+## Keyword translation
+
+`yara run <file> --keywords <path>` lets `if`/`while`/`class`/etc. be written in another language — see `translations/pt.keywords` and `examples/translations/hello_pt.yara`. Only the fixed set of reserved words translate; type names, identifiers, and error messages stay in English.
 
 ## Editor support
 

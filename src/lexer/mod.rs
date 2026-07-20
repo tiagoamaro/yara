@@ -1,5 +1,6 @@
 //! Tokenizer for Yara source.
 
+use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +50,98 @@ pub enum TokenKind {
     Comma,
 
     Eof,
+}
+
+/// The fixed set of reserved words/literal-keywords Yara recognizes,
+/// independent of what text spells them in a given source file. This
+/// indirection — text maps to `KeywordToken`, `KeywordToken` maps to
+/// `TokenKind` — is what makes keyword translation possible: the lexer's
+/// keyword table (`self.keywords: HashMap<String, KeywordToken>`) is data,
+/// not a hardcoded string match, so a different set of source spellings
+/// (see `translations::parse_keyword_file`) can point at the same
+/// `KeywordToken`s and therefore produce exactly the same `TokenKind`s the
+/// parser/typechecker/interpreter already know how to handle. `True`/`False`
+/// are split out from `TokenKind::Bool(bool)` here since a keyword *token*
+/// (as opposed to a lexed *token*) carries no payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeywordToken {
+    Def,
+    End,
+    If,
+    Elsif,
+    Else,
+    While,
+    For,
+    In,
+    Const,
+    Return,
+    Nil,
+    Import,
+    Class,
+    True,
+    False,
+}
+
+impl KeywordToken {
+    /// The canonical (English, load-bearing) name used as the left-hand side
+    /// in a translation file (`if = se`) and as the lookup key in
+    /// `default_keywords()`. This is the one place the "one fixed English
+    /// name per keyword" vocabulary is spelled out.
+    pub fn canonical_name(self) -> &'static str {
+        match self {
+            KeywordToken::Def => "def",
+            KeywordToken::End => "end",
+            KeywordToken::If => "if",
+            KeywordToken::Elsif => "elsif",
+            KeywordToken::Else => "else",
+            KeywordToken::While => "while",
+            KeywordToken::For => "for",
+            KeywordToken::In => "in",
+            KeywordToken::Const => "const",
+            KeywordToken::Return => "return",
+            KeywordToken::Nil => "nil",
+            KeywordToken::Import => "import",
+            KeywordToken::Class => "class",
+            KeywordToken::True => "true",
+            KeywordToken::False => "false",
+        }
+    }
+
+    /// All keyword tokens, in a stable order — used to build both
+    /// `default_keywords()` and `translations`'s canonical-name lookup table
+    /// without repeating the variant list a third time.
+    pub fn all() -> [KeywordToken; 15] {
+        [
+            KeywordToken::Def,
+            KeywordToken::End,
+            KeywordToken::If,
+            KeywordToken::Elsif,
+            KeywordToken::Else,
+            KeywordToken::While,
+            KeywordToken::For,
+            KeywordToken::In,
+            KeywordToken::Const,
+            KeywordToken::Return,
+            KeywordToken::Nil,
+            KeywordToken::Import,
+            KeywordToken::Class,
+            KeywordToken::True,
+            KeywordToken::False,
+        ]
+    }
+}
+
+/// The default English keyword table: every `KeywordToken` keyed by its own
+/// `canonical_name()`. This is what `Lexer::new` uses, and what
+/// `Lexer::with_keywords` starts from before a translation file overrides
+/// some subset of entries (see `translations::parse_keyword_file`) — a
+/// translation file only needs to list the words it actually wants to
+/// change, so untranslated keywords silently keep their English spelling.
+pub fn default_keywords() -> HashMap<String, KeywordToken> {
+    KeywordToken::all()
+        .into_iter()
+        .map(|k| (k.canonical_name().to_string(), k))
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -107,17 +200,32 @@ pub struct Lexer {
     line: usize,
     /// 1-indexed column of `chars[pos]`, tracked incrementally in `advance`.
     column: usize,
+    /// Maps recognized keyword spellings (source text) to their
+    /// `KeywordToken`. Defaults to `default_keywords()` (English); a
+    /// translated program builds this from `translations::parse_keyword_file`
+    /// instead via `Lexer::with_keywords`. Any identifier text not found here
+    /// is just `TokenKind::Ident`, never an error — unknown-word handling is
+    /// the parser's job, not the lexer's.
+    keywords: HashMap<String, KeywordToken>,
 }
 
 impl Lexer {
     /// Creates a lexer positioned at the very start of `source` (line 1,
-    /// column 1).
+    /// column 1), recognizing the default English keyword spellings.
     pub fn new(source: &str) -> Self {
+        Self::with_keywords(source, default_keywords())
+    }
+
+    /// Like `new`, but recognizing `keywords` (source spelling -> reserved
+    /// word) instead of the English defaults — the entry point for running
+    /// a program with translated keywords (see `translations::parse_keyword_file`).
+    pub fn with_keywords(source: &str, keywords: HashMap<String, KeywordToken>) -> Self {
         Lexer {
             chars: source.chars().collect(),
             pos: 0,
             line: 1,
             column: 1,
+            keywords,
         }
     }
 
@@ -322,29 +430,39 @@ impl Lexer {
     /// Keyword lookup is a `match` on the collected `&str` rather than a
     /// hash-map — with this few keywords the compiler-generated jump table
     /// is both simpler to read and at least as fast.
+    /// Reads a run of alphanumeric/`_` characters and classifies it by
+    /// looking it up in `self.keywords`: a hit maps its `KeywordToken` to the
+    /// matching `TokenKind` (splitting `True`/`False` back out into
+    /// `TokenKind::Bool(true/false)`, since only `TokenKind` carries that
+    /// payload); a miss is a plain identifier. Looking the text up in a map
+    /// (built once, at `Lexer` construction) rather than matching on literal
+    /// strings is what lets a translated keyword set (see
+    /// `translations::parse_keyword_file`) recognize different source
+    /// spellings while still producing the exact same `TokenKind`s every
+    /// later stage already understands.
     fn read_ident_or_keyword(&mut self) -> TokenKind {
         let start = self.pos;
         while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
             self.advance();
         }
         let text: String = self.chars[start..self.pos].iter().collect();
-        match text.as_str() {
-            "def" => TokenKind::Def,
-            "end" => TokenKind::End,
-            "if" => TokenKind::If,
-            "elsif" => TokenKind::Elsif,
-            "else" => TokenKind::Else,
-            "while" => TokenKind::While,
-            "for" => TokenKind::For,
-            "in" => TokenKind::In,
-            "const" => TokenKind::Const,
-            "return" => TokenKind::Return,
-            "import" => TokenKind::Import,
-            "class" => TokenKind::Class,
-            "nil" => TokenKind::Nil,
-            "true" => TokenKind::Bool(true),
-            "false" => TokenKind::Bool(false),
-            _ => TokenKind::Ident(text),
+        match self.keywords.get(text.as_str()) {
+            Some(KeywordToken::Def) => TokenKind::Def,
+            Some(KeywordToken::End) => TokenKind::End,
+            Some(KeywordToken::If) => TokenKind::If,
+            Some(KeywordToken::Elsif) => TokenKind::Elsif,
+            Some(KeywordToken::Else) => TokenKind::Else,
+            Some(KeywordToken::While) => TokenKind::While,
+            Some(KeywordToken::For) => TokenKind::For,
+            Some(KeywordToken::In) => TokenKind::In,
+            Some(KeywordToken::Const) => TokenKind::Const,
+            Some(KeywordToken::Return) => TokenKind::Return,
+            Some(KeywordToken::Import) => TokenKind::Import,
+            Some(KeywordToken::Class) => TokenKind::Class,
+            Some(KeywordToken::Nil) => TokenKind::Nil,
+            Some(KeywordToken::True) => TokenKind::Bool(true),
+            Some(KeywordToken::False) => TokenKind::Bool(false),
+            None => TokenKind::Ident(text),
         }
     }
 
@@ -562,5 +680,25 @@ mod tests {
                 TokenKind::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn with_keywords_recognizes_translated_spellings() {
+        let mut keywords = default_keywords();
+        keywords.remove("if");
+        keywords.insert("se".to_string(), KeywordToken::If);
+        let tokens = Lexer::with_keywords("se x", keywords).tokenize().unwrap();
+        assert_eq!(
+            tokens.into_iter().map(|t| t.kind).collect::<Vec<_>>(),
+            vec![TokenKind::If, TokenKind::Ident("x".into()), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn with_keywords_untranslated_word_is_plain_ident() {
+        // "if" was removed from the map in favor of "se" above; standalone
+        // Lexer::new (default English map) still recognizes "if" as a keyword
+        // and is unaffected by any other Lexer's custom map.
+        assert_eq!(kinds("if")[0], TokenKind::If);
     }
 }

@@ -17,6 +17,7 @@ All examples run end-to-end via `cargo run -- run examples/<file>.yara` (verifie
 - `data_structures/` — array-backed data structure demos (`list`, `stack`, `queue`, `linked_list`, `binary_tree`, `graph`); see its own `CLAUDE.md`.
 - `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace; see its own `CLAUDE.md`.
 - `objects/` — `class` declarations: const/instance-var/initializer/method, `.new` construction, field read/write; see its own `CLAUDE.md`.
+- `translations/` — keyword-translation demo (`--keywords <path>`, Portuguese); see its own `CLAUDE.md`.
 
 ## Gotchas
 - `import` paths are relative to the importing file's own directory and resolved at `yara run` time (not a build step) — running `kitchen_sink.yara` from a different working directory still works because resolution is relative to the file, not cwd.
