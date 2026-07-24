@@ -9,15 +9,14 @@ Done and committed, suite green (111 unit + 4 integration, fmt clean):
 - **Structure item 4** — CI workflow (`.github/workflows/ci.yml`, fmt + test, Rust 1.97.1).
 - **Structure item 1** — parser/typechecker/interpreter split into submodules (exprs/stmts + calls/classes), mod.rs keeps public types + dispatch; done via Haiku sub-agents, doc comments verified restored (213 in parser).
 - **Phase 3a** — `Ptr<T>` + interpreter heap + `alloc`/`deref`/`set_deref`/`free`; use-after-free and double-free are runtime errors; `examples/pointers/` + error examples with goldens.
-- **Phase 3b core** — mark-and-sweep `collect()` builtin (roots from every env scope via `Environment::iter_values`, chased through arrays/instances/pointee slots, freed count returned as `Integer`; unit-tested incl. cascade + container roots).
+- **Phase 3b complete** — mark-and-sweep `collect()` builtin (roots from every env scope via `Environment::iter_values`, chased through arrays/instances/pointee slots, freed count returned as `Integer`; unit-tested incl. cascade + container roots), plus `examples/pointers/gc.yara` manual-vs-GC demo and docs (architecture heap/GC section, syntax entry).
 
 **Next up (in order):**
-1. **Phase 3b examples** — side-by-side manual-`free` vs `collect()` programs under `examples/pointers/` (leak demo showing `collect()` reclaiming); docs sync (`docs/architecture.md` heap+GC section, `docs/syntax.md`).
-2. **Structure item 3** — unify builtin check/eval behavior behind one table (best right after 3a adds more builtins).
-3. **Phase 4** — class inheritance (re-scope first).
-4. Structure item 5 (uniform `Span` in error types) — opportunistic.
-5. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed; slot after Phase 3b or later.
-6. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
+1. **Structure item 3** — unify builtin check/eval behavior behind one table (best right after 3a adds more builtins).
+2. **Phase 4** — class inheritance (re-scope first).
+3. Structure item 5 (uniform `Span` in error types) — opportunistic.
+4. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed; slot after Phase 3b or later.
+5. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
 Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.

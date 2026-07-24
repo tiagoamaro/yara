@@ -103,13 +103,14 @@ print(deref(p))               # prints 10
 free(p)                        # deallocate the slot
 ```
 
-A pointer is declared with the `Ptr<T>` type annotation — `T` can be any base type or class. Four builtins manage pointers:
+A pointer is declared with the `Ptr<T>` type annotation — `T` can be any base type or class. Five builtins manage pointers:
 - `alloc(value: T) -> Ptr<T>` — allocate a new slot on the heap, initialize it with `value`, return a pointer handle to that slot.
 - `deref(pointer: Ptr<T>) -> T` — read the value at the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free".
 - `set_deref(pointer: Ptr<T>, value: T) -> Nil` — write `value` to the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free".
 - `free(pointer: Ptr<T>) -> Nil` — deallocate the slot, marking it as no longer valid. If called twice on the same pointer, this is a runtime error: "double free". A freed slot's backing memory is never reused.
+- `collect() -> Integer` — run a mark-and-sweep garbage collection pass over the heap. Roots are all reachable pointers in every live scope, chased recursively through arrays, instances, and pointee slots. Unmarked slots are freed; returns the count of reclaimed slots.
 
-Pointers enable explicit memory management and are a teaching tool for understanding allocation and deallocation — mistakes are caught as visible runtime errors, not silent undefined behavior.
+Pointers enable both explicit memory management (via `alloc`/`free`) and automatic collection (via `collect()`) — teaching two fundamental memory-management models. Mistakes in manual management are caught as visible runtime errors, not silent undefined behavior.
 
 ## Keyword translation
 
