@@ -22,6 +22,7 @@
 //! - [`typechecker`] statically checks the tree; [`interpreter`] then executes it.
 
 pub mod ast;
+pub mod builtins;
 pub mod diagnostics;
 pub mod env;
 pub mod interpreter;

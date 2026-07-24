@@ -1,6 +1,7 @@
 //! Static type checking pass over the AST.
 
 use crate::ast::{BinOp, Expr, Stmt, UnOp};
+use crate::builtins;
 use crate::env::Environment;
 use std::collections::HashMap;
 use std::fmt;
@@ -1045,32 +1046,32 @@ impl TypeChecker {
         line: usize,
         column: usize,
     ) -> Result<Option<Type>, TypeError> {
-        let arity_err = |expected: usize| TypeError {
-            message: format!(
-                "`{callee}` expects {expected} argument(s), found {}",
-                args.len()
-            ),
-            line,
-            column,
+        let Some(builtin) = builtins::lookup(callee) else {
+            return Ok(None);
         };
+        // Arity is checked once here from the registry; the per-builtin arms
+        // below can then trust `args` has exactly `builtin.arity` elements.
+        if args.len() != builtin.arity {
+            return Err(TypeError {
+                message: format!(
+                    "`{callee}` expects {} argument(s), found {}",
+                    builtin.arity,
+                    args.len()
+                ),
+                line,
+                column,
+            });
+        }
         match callee {
-            "len" => {
-                if args.len() != 1 {
-                    return Err(arity_err(1));
-                }
-                match self.check_expr(&args[0])? {
-                    Type::Array(_) => Ok(Some(Type::Integer)),
-                    other => Err(TypeError {
-                        message: format!("`len` expects an array, found `{other}`"),
-                        line,
-                        column,
-                    }),
-                }
-            }
+            "len" => match self.check_expr(&args[0])? {
+                Type::Array(_) => Ok(Some(Type::Integer)),
+                other => Err(TypeError {
+                    message: format!("`len` expects an array, found `{other}`"),
+                    line,
+                    column,
+                }),
+            },
             "push" => {
-                if args.len() != 2 {
-                    return Err(arity_err(2));
-                }
                 let array_ty = self.check_expr(&args[0])?;
                 let value_ty = self.check_expr(&args[1])?;
                 match array_ty {
@@ -1090,9 +1091,6 @@ impl TypeChecker {
                 }
             }
             "get" => {
-                if args.len() != 2 {
-                    return Err(arity_err(2));
-                }
                 let array_ty = self.check_expr(&args[0])?;
                 let index_ty = self.check_expr(&args[1])?;
                 if index_ty != Type::Integer {
@@ -1112,9 +1110,6 @@ impl TypeChecker {
                 }
             }
             "set" => {
-                if args.len() != 3 {
-                    return Err(arity_err(3));
-                }
                 let array_ty = self.check_expr(&args[0])?;
                 let index_ty = self.check_expr(&args[1])?;
                 let value_ty = self.check_expr(&args[2])?;
@@ -1141,20 +1136,15 @@ impl TypeChecker {
                     }),
                 }
             }
-            "pop" => {
-                if args.len() != 1 {
-                    return Err(arity_err(1));
-                }
-                match self.check_expr(&args[0])? {
-                    Type::Array(elem) => Ok(Some(*elem)),
-                    other => Err(TypeError {
-                        message: format!("`pop` expects an array, found `{other}`"),
-                        line,
-                        column,
-                    }),
-                }
-            }
-            _ => Ok(None),
+            "pop" => match self.check_expr(&args[0])? {
+                Type::Array(elem) => Ok(Some(*elem)),
+                other => Err(TypeError {
+                    message: format!("`pop` expects an array, found `{other}`"),
+                    line,
+                    column,
+                }),
+            },
+            _ => unreachable!("builtin `{callee}` is in the registry but has no typecheck arm"),
         }
     }
 

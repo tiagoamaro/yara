@@ -1,6 +1,7 @@
 //! Tree-walk evaluator executing a typechecked AST.
 
 use crate::ast::{BinOp, Expr, Stmt, UnOp};
+use crate::builtins;
 use crate::env::Environment;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -828,6 +829,9 @@ impl Interpreter {
         line: usize,
         column: usize,
     ) -> Result<Option<Value>, RuntimeError> {
+        if builtins::lookup(callee).is_none() {
+            return Ok(None);
+        }
         let expect_array = |v: Value,
                             call_stack: &[StackFrame]|
          -> Result<Rc<RefCell<Vec<Value>>>, RuntimeError> {
@@ -891,7 +895,7 @@ impl Interpreter {
                 })?;
                 Ok(Some(popped))
             }
-            _ => Ok(None),
+            _ => unreachable!("builtin `{callee}` is in the registry but has no interpreter arm"),
         }
     }
 
