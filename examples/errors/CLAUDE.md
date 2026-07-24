@@ -3,7 +3,7 @@
 Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
 
 ## Status
-All eleven verified against the actual binary (2026-07-24) after the imported-file snippet fix landed; output below is real, not illustrative.
+All twelve verified against the actual binary (2026-07-24) after the imported-file snippet fix and definite-assignment soundness fix landed; output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -102,6 +102,14 @@ All eleven verified against the actual binary (2026-07-24) after the imported-fi
     | ^
   ```
 - `import_type_error_helper.yara` — the imported helper: `bad()` is declared `Integer` but returns a `String`. Fails at typecheck on its own too, which is why it has its own `Type` expected-stage entry in `tests/run_examples.rs`.
+- `class_unassigned_field.yara` — a `Counter` class has an instance-var `count: Integer` but the class has no `initializer`, and a `bump()` method that assigns to `count`. The typechecker rejects this at the field's declaration — every instance-var must be assigned in `initializer`:
+  ```
+  type error: field `count` of class `Counter` is never assigned in `initializer` (it would be `Nil` at runtime, not `Integer`)
+    --> examples/errors/class_unassigned_field.yara:2:3
+    |
+  2 |   count: Integer
+    |   ^
+  ```
 
 ## Gotchas
 - `undefined_variable.yara` shows that referencing an undefined variable is a **typecheck-time** error, not a runtime one — Yara's typechecker tracks variable scope itself (see `src/typechecker/CLAUDE.md`), so this never reaches the interpreter.
