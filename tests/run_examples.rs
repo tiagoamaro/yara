@@ -129,7 +129,8 @@ fn every_error_example_fails_at_expected_stage() {
             "array_out_of_bounds"
             | "runtime_error_stack_trace"
             | "use_after_free"
-            | "double_free" => Stage::Runtime,
+            | "double_free"
+            | "nil_pointer_deref" => Stage::Runtime,
             other => panic!("no expected stage recorded for error example `{other}` — add one"),
         }
     }

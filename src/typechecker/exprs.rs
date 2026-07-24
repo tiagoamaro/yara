@@ -168,7 +168,13 @@ fn check_binary_op(
             Ok(Type::Boolean)
         }
         BinOp::Eq | BinOp::NotEq => {
-            if left != right {
+            // A pointer may be compared against `nil` (either side) — the
+            // nullable-pointer test that terminates a linked-list walk.
+            let ptr_nil_probe = matches!(
+                (&left, &right),
+                (Type::Pointer(_), Type::Nil) | (Type::Nil, Type::Pointer(_))
+            );
+            if left != right && !ptr_nil_probe {
                 return Err(mismatch());
             }
             Ok(Type::Boolean)

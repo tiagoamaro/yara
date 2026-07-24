@@ -316,6 +316,19 @@ mod tests {
         Ok(interp)
     }
 
+    /// Dereferencing a `nil` pointer is a runtime error naming the mistake,
+    /// and pointer-vs-nil equality evaluates sanely at runtime.
+    #[test]
+    fn nil_pointer_deref_is_runtime_error() {
+        let err = run("p: Ptr<Integer> = nil\nderef(p)").unwrap_err();
+        assert!(err.message.contains("nil pointer dereference"));
+        let interp =
+            run("p: Ptr<Integer> = nil\nq: Ptr<Integer> = alloc(1)\na = p == nil\nb = q == nil")
+                .unwrap();
+        assert_eq!(interp.lookup_var("a"), Some(&Value::Boolean(true)));
+        assert_eq!(interp.lookup_var("b"), Some(&Value::Boolean(false)));
+    }
+
     /// `collect()` frees an allocation whose pointer went out of scope (a
     /// leak) but keeps one still bound in a live scope, and reports exactly
     /// one freed slot.

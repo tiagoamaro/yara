@@ -82,6 +82,20 @@ impl Type {
     }
 }
 
+/// Whether a value of type `actual` may be stored where `expected` is
+/// declared. Almost always plain equality, with exactly two loopholes:
+/// the empty-array-literal sentinel (`[]` checks as `Array(Nil)`, compatible
+/// with any declared array type), and `nil` into any pointer type — Yara's
+/// pointers are nullable, C-style, so `nil` can seed or terminate a
+/// pointer-based structure (a linked list's tail). Dereferencing that `nil`
+/// later is the interpreter's "nil pointer dereference" runtime error, not
+/// UB — the teaching point.
+pub(crate) fn assignable(expected: &Type, actual: &Type) -> bool {
+    expected == actual
+        || matches!((expected, actual), (Type::Array(_), Type::Array(e)) if **e == Type::Nil)
+        || matches!((expected, actual), (Type::Pointer(_), Type::Nil))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeError {
     pub message: String,
@@ -464,6 +478,26 @@ mod tests {
     fn pointer_to_unknown_type_is_error() {
         let err = check("p: Ptr<Mystery> = alloc(1)").unwrap_err();
         assert!(err.message.contains("unknown type `Mystery`"));
+    }
+
+    /// `nil` is assignable wherever a pointer type is declared (nullable
+    /// pointers), and a pointer may be `==`/`!=`-compared against `nil`.
+    #[test]
+    fn nil_assignable_to_pointer_and_comparable() {
+        assert!(check(
+            "p: Ptr<Integer> = nil\nq: Ptr<Integer> = alloc(5)\na: Boolean = p == nil\nb: Boolean = nil != q"
+        )
+        .is_ok());
+    }
+
+    /// `nil` still doesn't sneak into non-pointer declarations, and `nil`
+    /// comparison against a non-pointer type stays an error.
+    #[test]
+    fn nil_not_assignable_to_non_pointer() {
+        let err = check("x: Integer = nil").unwrap_err();
+        assert!(err.message.contains("type mismatch"));
+        let err = check("x: Integer = 5\nb: Boolean = x == nil").unwrap_err();
+        assert!(err.message.contains("cannot apply"));
     }
 
     #[test]
