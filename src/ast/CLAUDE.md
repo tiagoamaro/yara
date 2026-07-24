@@ -18,4 +18,4 @@ Implemented. `Expr`, `Stmt`, `TypeAnnotation`, `Param`, `BinOp` defined.
 
 ## Gotchas
 - `BinOp` has no precedence info attached — precedence lives entirely in the parser's grammar (comparison > additive > multiplicative > unary).
-- No record/struct type and no pointers — `examples/data_structures/` builds linked lists/trees/graphs out of parallel `IntArray`s with integer "indices" standing in for pointers (arena style). See root `CLAUDE.md` TODO for a possible future opt-in pointer type. `class` (added later) is a separate, heavier-weight way to group state — the two features don't interact (no `Array<SomeClass>`, no arena-of-objects idiom explored yet).
+- No record/struct type — `examples/data_structures/` builds linked lists/trees/graphs out of parallel `IntArray`s with integer "indices" standing in for pointers (arena style). `Ptr<T>` provides an opt-in pointer type for manual/GC memory management; pointers to instances are supported (`Ptr<Node>` legal, resolved via the class table) — see `examples/pointers/linked_list.yara` and `examples/pointers/circular_list.yara` for pointer-based list demos.

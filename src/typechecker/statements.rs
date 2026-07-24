@@ -28,7 +28,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             line,
             column,
         } => {
-            let value_ty = super::exprs::check_expr(checker, value)?;
+            let value_ty = super::expressions::check_expr(checker, value)?;
             let mut stored_ty = value_ty.clone();
             if let Some(ann) = type_ann {
                 let declared = checker.resolve_type(&ann.name, ann.line, ann.column)?;
@@ -82,7 +82,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
         }
         Stmt::Return { value, .. } => {
             if let Some(v) = value {
-                super::exprs::check_expr(checker, v)?;
+                super::expressions::check_expr(checker, v)?;
             }
             Ok(())
         }
@@ -94,7 +94,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             line,
             column,
         } => {
-            let cond_ty = super::exprs::check_expr(checker, condition)?;
+            let cond_ty = super::expressions::check_expr(checker, condition)?;
             if cond_ty != Type::Boolean {
                 return Err(TypeError {
                     message: format!("`if` condition must be Boolean, found `{cond_ty}`"),
@@ -104,7 +104,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             }
             check_block(checker, then_body)?;
             for (cond, body) in elsif_branches {
-                let ty = super::exprs::check_expr(checker, cond)?;
+                let ty = super::expressions::check_expr(checker, cond)?;
                 if ty != Type::Boolean {
                     return Err(TypeError {
                         message: format!("`elsif` condition must be Boolean, found `{ty}`"),
@@ -125,7 +125,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             line,
             column,
         } => {
-            let cond_ty = super::exprs::check_expr(checker, condition)?;
+            let cond_ty = super::expressions::check_expr(checker, condition)?;
             if cond_ty != Type::Boolean {
                 return Err(TypeError {
                     message: format!("`while` condition must be Boolean, found `{cond_ty}`"),
@@ -144,8 +144,8 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             line,
             column,
         } => {
-            let start_ty = super::exprs::check_expr(checker, range_start)?;
-            let end_ty = super::exprs::check_expr(checker, range_end)?;
+            let start_ty = super::expressions::check_expr(checker, range_start)?;
+            let end_ty = super::expressions::check_expr(checker, range_end)?;
             if start_ty != Type::Integer || end_ty != Type::Integer {
                 return Err(TypeError {
                     message: "`for` range bounds must be Integer".to_string(),
@@ -160,7 +160,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             Ok(())
         }
         Stmt::ExprStmt(expr) => {
-            super::exprs::check_expr(checker, expr)?;
+            super::expressions::check_expr(checker, expr)?;
             Ok(())
         }
         // Resolved away by `resolver` before typechecking ever sees the program.
@@ -176,7 +176,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
         } => {
             let field_ty =
                 super::classes::check_field_access(checker, object, field, *line, *column)?;
-            let value_ty = super::exprs::check_expr(checker, value)?;
+            let value_ty = super::expressions::check_expr(checker, value)?;
             if !super::assignable(&field_ty, &value_ty) {
                 return Err(TypeError {
                     message: format!(
@@ -240,10 +240,10 @@ pub(super) fn check_body_return_type(
 /// `check_stmt` and contributes no return type (`None`).
 fn check_tail_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<Option<Type>, TypeError> {
     match stmt {
-        Stmt::ExprStmt(expr) => Ok(Some(super::exprs::check_expr(checker, expr)?)),
+        Stmt::ExprStmt(expr) => Ok(Some(super::expressions::check_expr(checker, expr)?)),
         Stmt::Return {
             value: Some(expr), ..
-        } => Ok(Some(super::exprs::check_expr(checker, expr)?)),
+        } => Ok(Some(super::expressions::check_expr(checker, expr)?)),
         Stmt::Return { value: None, .. } => Ok(Some(Type::Nil)),
         Stmt::If {
             condition,
@@ -253,7 +253,7 @@ fn check_tail_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<Option<Type
             line,
             column,
         } => {
-            let cond_ty = super::exprs::check_expr(checker, condition)?;
+            let cond_ty = super::expressions::check_expr(checker, condition)?;
             if cond_ty != Type::Boolean {
                 return Err(TypeError {
                     message: format!("`if` condition must be Boolean, found `{cond_ty}`"),
@@ -263,7 +263,7 @@ fn check_tail_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<Option<Type
             }
             let mut result = check_body_return_type(checker, then_body)?;
             for (cond, body) in elsif_branches {
-                let ty = super::exprs::check_expr(checker, cond)?;
+                let ty = super::expressions::check_expr(checker, cond)?;
                 if ty != Type::Boolean {
                     return Err(TypeError {
                         message: format!("`elsif` condition must be Boolean, found `{ty}`"),

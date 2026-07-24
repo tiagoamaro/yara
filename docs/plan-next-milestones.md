@@ -2,14 +2,15 @@
 
 ## Progress (updated 2026-07-24, session paused here)
 
-Done and committed, suite green (111 unit + 4 integration, fmt clean):
+Done and committed, suite green (116 unit + 4 integration, fmt clean):
 - **Phase 1** — imported-file snippet fix (`diagnostics::SourceMap` virtual lines).
 - **Structure item 2** — golden error-output tests (`tests/error_output.rs` + `tests/golden/`).
 - **Phase 2** — definite-assignment check for class fields.
 - **Structure item 4** — CI workflow (`.github/workflows/ci.yml`, fmt + test, Rust 1.97.1).
-- **Structure item 1** — parser/typechecker/interpreter split into submodules (exprs/stmts + calls/classes), mod.rs keeps public types + dispatch; done via Haiku sub-agents, doc comments verified restored (213 in parser).
+- **Structure item 1** — parser/typechecker/interpreter split into submodules (expressions/statements + calls/classes), mod.rs keeps public types + dispatch; done via Haiku sub-agents, doc comments verified restored (213 in parser).
 - **Phase 3a** — `Ptr<T>` + interpreter heap + `alloc`/`deref`/`set_deref`/`free`; use-after-free and double-free are runtime errors; `examples/pointers/` + error examples with goldens.
 - **Phase 3b complete** — mark-and-sweep `collect()` builtin (roots from every env scope via `Environment::iter_values`, chased through arrays/instances/pointee slots, freed count returned as `Integer`; unit-tested incl. cascade + container roots), plus `examples/pointers/gc.yara` manual-vs-GC demo and docs (architecture heap/GC section, syntax entry).
+- **Pointer follow-ups** (2026-07-24) — `Ptr<class>` resolution, nullable pointers (`nil` as any `Ptr<T>`), nil-deref runtime error, pointer-based linked/circular list examples, full-word file names convention (`statements.rs`/`expressions.rs`).
 
 **Next up (in order):**
 1. **Structure item 3** — unify builtin check/eval behavior behind one table (best right after 3a adds more builtins).

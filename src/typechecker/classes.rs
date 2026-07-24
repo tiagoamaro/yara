@@ -148,7 +148,7 @@ pub(super) fn check_classes(checker: &mut TypeChecker, program: &[Stmt]) -> Resu
                 Some(t) => Some(checker.resolve_type(&t.name, t.line, t.column)?),
                 None => None,
             };
-            let actual_return = super::stmts::check_body_return_type(checker, body)?;
+            let actual_return = super::statements::check_body_return_type(checker, body)?;
             if let (Some(declared), Some(actual)) = (&declared_return, &actual_return) {
                 if declared != actual {
                     checker.pop_scope();
@@ -224,7 +224,7 @@ pub(super) fn check_field_access(
     line: usize,
     column: usize,
 ) -> Result<Type, TypeError> {
-    let object_ty = super::exprs::check_expr(checker, object)?;
+    let object_ty = super::expressions::check_expr(checker, object)?;
     let Type::Instance(class_name) = &object_ty else {
         return Err(TypeError {
             message: format!("cannot access field `{field}` on `{object_ty}`"),
@@ -260,7 +260,7 @@ pub(super) fn check_method_call(
         }
     }
 
-    let object_ty = super::exprs::check_expr(checker, object)?;
+    let object_ty = super::expressions::check_expr(checker, object)?;
     let Type::Instance(class_name) = &object_ty else {
         return Err(TypeError {
             message: format!("cannot call method `{method}` on `{object_ty}`"),

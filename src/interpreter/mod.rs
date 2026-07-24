@@ -10,8 +10,8 @@ use std::rc::Rc;
 
 mod calls;
 mod classes;
-mod exprs;
-mod stmts;
+mod expressions;
+mod statements;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
