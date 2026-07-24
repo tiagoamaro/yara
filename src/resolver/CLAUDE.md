@@ -3,7 +3,7 @@
 Resolves `import "path"` statements before typechecking/interpretation.
 
 ## Status
-Implemented. `resolve_imports(program: Vec<Stmt>, current_file: &Path) -> Result<Vec<Stmt>, ResolveError>`.
+Implemented. `resolve_imports(program: Vec<Stmt>, current_file: &Path, map: &mut diagnostics::SourceMap) -> Result<Vec<Stmt>, ResolveError>`.
 
 ## Design
 - `import "path"` is parsed by `parser` into `Stmt::Import { path, line, column }` — a normal AST node — but `typechecker` and `interpreter` only ever see it as a no-op (`Stmt::Import { .. }` arm); real handling happens here, between parsing and typechecking, wired in `main.rs::run_file`.
@@ -11,6 +11,7 @@ Implemented. `resolve_imports(program: Vec<Stmt>, current_file: &Path) -> Result
 - Recursion: an imported file's own `import`s are resolved too (`resolve` calls itself), so imports can chain.
 - Cycle detection: a `HashSet<PathBuf>` of canonicalized paths, seeded with the entry file, threaded through the recursion; re-visiting a path is a `ResolveError`.
 - Splicing: each `Stmt::Import` is replaced in place by the imported file's (already-resolved) statement list — so a function/const defined in an imported file becomes globally visible to the importer, same scope as if it had been pasted in.
+- **Virtual line space fix**: the caller seeds the `SourceMap` with the entry file (`SourceMap::new(path, source)`, done in `main.rs`). For each imported file, the resolver registers it in the map (`map.add_file(...)` returns a line offset) and shifts the imported AST's line numbers by that offset (`Stmt::shift_lines`) before recursing — every file gets a disjoint virtual line range in the global numbering. Error positions for nested imports (type errors, runtime stack frames) are also in the virtual space, so later calls to `diagnostics::render_with_map` map them back to the correct file + local line number + source snippet.
 - Errors (`ResolveError`) carry the *importing* `import` statement's line:column (not a position inside the imported file) — same shape/Display as `LexError`/`ParseError`/`TypeError`.
 
 ## Gotchas
