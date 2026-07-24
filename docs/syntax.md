@@ -93,6 +93,24 @@ print(h.area(2.0))         # method call
 
 No inheritance, no class-level/static methods other than `.new`, no visibility modifiers — everything is public. Inside a method body, bare names resolve first to locals/params, then to the instance's own fields/consts (implicit `self`, no `self.`/`@` sigil needed) — this is why `count = number` inside `initializer` sets the instance variable rather than creating a local. Instance vars declared with no value (`count: Integer`) start out effectively unset until a method assigns them; reading one before that happens is a latent gap (see `src/typechecker/CLAUDE.md`). A class name doubles as its own type annotation (`h: Hello = ...`). Class instances have reference semantics like arrays: assigning `a = b` (both `Hello`) makes `a`/`b` alias the same instance.
 
+## Pointers
+
+```
+p: Ptr<Integer> = alloc(5)   # allocate a pointer to an integer
+print(deref(p))               # dereference: prints 5
+set_deref(p, 10)              # update the pointed-to value
+print(deref(p))               # prints 10
+free(p)                        # deallocate the slot
+```
+
+A pointer is declared with the `Ptr<T>` type annotation — `T` can be any base type or class. Four builtins manage pointers:
+- `alloc(value: T) -> Ptr<T>` — allocate a new slot on the heap, initialize it with `value`, return a pointer handle to that slot.
+- `deref(pointer: Ptr<T>) -> T` — read the value at the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free".
+- `set_deref(pointer: Ptr<T>, value: T) -> Nil` — write `value` to the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free".
+- `free(pointer: Ptr<T>) -> Nil` — deallocate the slot, marking it as no longer valid. If called twice on the same pointer, this is a runtime error: "double free". A freed slot's backing memory is never reused.
+
+Pointers enable explicit memory management and are a teaching tool for understanding allocation and deallocation — mistakes are caught as visible runtime errors, not silent undefined behavior.
+
 ## Keyword translation
 
 `yara run <file> --keywords <path>` recognizes translated reserved-word spellings instead of the English defaults, e.g. `translations/pt.keywords` maps `if -> se`, `class -> classe`, `def -> funcao`, `end -> fim`, and so on. See `examples/translations/hello_pt.yara` for the same `class` example from above, rewritten in Portuguese. Only the fixed set of reserved words is translatable — type names (`Int`/`Integer`/...), identifiers, string contents, and error messages always stay in English. A translation file only needs to list the keywords it wants to change; anything omitted keeps its English spelling.
