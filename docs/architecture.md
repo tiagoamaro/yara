@@ -4,7 +4,7 @@ How Yara actually turns a `.yara` file into running output, traced through the r
 
 ## The pipeline
 
-`main.rs::run_file` is the whole story in one function: read the file, then feed it through five stages in sequence, stopping at the first one that returns an error.
+`main.rs::run_file` is the whole story in one function: read the file, then feed it through five stages in sequence, stopping at the first one that returns an error. (`main.rs` is a thin CLI binary over the `yara` **library crate** — `src/lib.rs` — where every stage actually lives; that split is what lets the pipeline be driven from the end-to-end `tests/`.)
 
 ```mermaid
 flowchart TD
@@ -15,7 +15,7 @@ flowchart TD
     E -->|"Ok(())"| F["Interpreter::new().run_program(&program)\nsrc/interpreter/mod.rs"]
     F --> G["program output\n(via print(...))"]
 
-    B -.->|LexError| X["print_error\nsrc/main.rs"]
+    B -.->|LexError| X["main.rs stage() ->\ndiagnostics::render\nsrc/diagnostics/mod.rs"]
     C -.->|ParseError| X
     D -.->|ResolveError| X
     E -.->|TypeError| X
@@ -23,7 +23,9 @@ flowchart TD
     X --> Z["stderr: rustc-style\nsnippet + caret, exit 1"]
 ```
 
-Every stage's error type (`LexError`, `ParseError`, `ResolveError`, `TypeError`, `RuntimeError`) carries the same shape — `message`, `line`, `column` (`RuntimeError` additionally carries `call_stack`) — which is what lets `main.rs::print_error` render all five with one function instead of five bespoke printers.
+Every stage's error type (`LexError`, `ParseError`, `ResolveError`, `TypeError`, `RuntimeError`) implements the `diagnostics::Diagnostic` trait (`kind`/`message`/`span`, plus `frames` for `RuntimeError`'s call stack) — which is what lets `diagnostics::render`, invoked by `main.rs`'s one-line `stage` helper, render all five with a single function instead of five bespoke printers. The stages keep their own distinct error types; only the rendering is shared.
+
+Beyond the five pipeline stages, a few small modules are shared across them, each a single source of truth for one concern: `diagnostics` (error rendering, above), `env` (the `Environment<T>` scope stack the typechecker and interpreter both use — over `Type` and `Value` respectively), `types` (type-name alias normalization, `Int`→`Integer`), and `builtins` (the array-builtin name+arity registry both stages consult). See `src/CLAUDE.md`.
 
 ## Lexer: character to token
 
@@ -102,4 +104,4 @@ Class method calls (`run_method`) use a copy-in/copy-out trick for implicit `sel
 
 ## Where to read next
 
-Each stage's own `CLAUDE.md` (`src/lexer/CLAUDE.md`, `src/ast/CLAUDE.md`, `src/parser/CLAUDE.md`, `src/typechecker/CLAUDE.md`, `src/interpreter/CLAUDE.md`, `src/resolver/CLAUDE.md`) has more implementation-level detail, gotchas, and known gaps than fits here. `docs/syntax.md` documents the language grammar itself, not the implementation.
+Each stage's own `CLAUDE.md` (`src/lexer/CLAUDE.md`, `src/ast/CLAUDE.md`, `src/parser/CLAUDE.md`, `src/typechecker/CLAUDE.md`, `src/interpreter/CLAUDE.md`, `src/resolver/CLAUDE.md`, `src/diagnostics/CLAUDE.md`) has more implementation-level detail, gotchas, and known gaps than fits here; `src/CLAUDE.md` covers the flat support files (`lib.rs`, `main.rs`, `env.rs`, `types.rs`, `builtins.rs`). `docs/syntax.md` documents the language grammar itself, not the implementation.
