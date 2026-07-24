@@ -1,6 +1,22 @@
 # Yara — Next Milestones Plan
 
-Status baseline: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
+## Progress (updated 2026-07-24, session paused here)
+
+Done and committed, suite green (94 unit + 4 integration, fmt clean):
+- **Phase 1** — imported-file snippet fix (`diagnostics::SourceMap` virtual lines).
+- **Structure item 2** — golden error-output tests (`tests/error_output.rs` + `tests/golden/`).
+- **Phase 2** — definite-assignment check for class fields.
+- **Structure item 4** — CI workflow (`.github/workflows/ci.yml`, fmt + test, Rust 1.97.1).
+- **Structure item 1** — parser/typechecker/interpreter split into submodules (exprs/stmts + calls/classes), mod.rs keeps public types + dispatch; done via Haiku sub-agents, doc comments verified restored (213 in parser).
+
+**Next up (in order):**
+1. **Phase 3a** — `Ptr<T>` + interpreter heap + `alloc`/`deref`/`set_deref`/`free` (details below). Nothing started.
+2. **Phase 3b** — mark-and-sweep `collect()` builtin + manual-vs-GC examples.
+3. **Structure item 3** — unify builtin check/eval behavior behind one table (best right after 3a adds more builtins).
+4. **Phase 4** — class inheritance (re-scope first).
+5. Structure item 5 (uniform `Span` in error types) — opportunistic.
+
+Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
 Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.
 
 ---
