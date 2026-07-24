@@ -401,23 +401,24 @@ impl Parser {
     /// requiring an explicit `name: Type`), an optional `: ReturnType`, then
     /// delegates the function body to `parse_block(&[End])` so it can contain
     /// arbitrary statements (unlike the restricted `parse_class` body).
-    fn parse_function_def(&mut self) -> Result<Stmt, ParseError> {
-        let def_tok = self.advance();
-        let (name, _, _) = self.expect_ident()?;
-        self.expect(&TokenKind::LParen, "`(`")?;
-
-        let mut params = Vec::new();
-        if !self.check(&TokenKind::RParen) {
+    /// Parses a comma-separated list of items — each produced by `parse_item`
+    /// — up to and including `terminator` (named by `terminator_desc` for the
+    /// "expected X" error message). Handles both the empty list (an immediate
+    /// terminator) and a final item with no trailing comma; a trailing comma is
+    /// rejected, since the next iteration would try to parse another item and
+    /// hit the terminator. Shared by every bracketed list in the grammar —
+    /// call args, method-call args, array literals, and function params — which
+    /// differ only in the element parser and the closing bracket.
+    fn parse_comma_separated<T>(
+        &mut self,
+        terminator: &TokenKind,
+        terminator_desc: &str,
+        parse_item: fn(&mut Self) -> Result<T, ParseError>,
+    ) -> Result<Vec<T>, ParseError> {
+        let mut items = Vec::new();
+        if !self.check(terminator) {
             loop {
-                let (pname, pline, pcolumn) = self.expect_ident()?;
-                self.expect(&TokenKind::Colon, "`:`")?;
-                let type_ann = self.parse_type_annotation()?;
-                params.push(Param {
-                    name: pname,
-                    type_ann,
-                    line: pline,
-                    column: pcolumn,
-                });
+                items.push(parse_item(self)?);
                 if self.check(&TokenKind::Comma) {
                     self.advance();
                 } else {
@@ -425,7 +426,30 @@ impl Parser {
                 }
             }
         }
-        self.expect(&TokenKind::RParen, "`)`")?;
+        self.expect(terminator, terminator_desc)?;
+        Ok(items)
+    }
+
+    /// Parses a single `name: Type` parameter declaration (the element parser
+    /// for a function's parameter list; see `parse_comma_separated`).
+    fn parse_param(&mut self) -> Result<Param, ParseError> {
+        let (name, line, column) = self.expect_ident()?;
+        self.expect(&TokenKind::Colon, "`:`")?;
+        let type_ann = self.parse_type_annotation()?;
+        Ok(Param {
+            name,
+            type_ann,
+            line,
+            column,
+        })
+    }
+
+    fn parse_function_def(&mut self) -> Result<Stmt, ParseError> {
+        let def_tok = self.advance();
+        let (name, _, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LParen, "`(`")?;
+
+        let params = self.parse_comma_separated(&TokenKind::RParen, "`)`", Self::parse_param)?;
 
         let return_type = if self.check(&TokenKind::Colon) {
             self.advance();
@@ -717,18 +741,8 @@ impl Parser {
                 let (name, _, _) = self.expect_ident()?;
                 if self.check(&TokenKind::LParen) {
                     self.advance();
-                    let mut args = Vec::new();
-                    if !self.check(&TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_expr()?);
-                            if self.check(&TokenKind::Comma) {
-                                self.advance();
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                    self.expect(&TokenKind::RParen, "`)`")?;
+                    let args =
+                        self.parse_comma_separated(&TokenKind::RParen, "`)`", Self::parse_expr)?;
                     expr = Expr::MethodCall {
                         object: Box::new(expr),
                         method: name,
@@ -810,18 +824,8 @@ impl Parser {
                 self.advance();
                 if self.check(&TokenKind::LParen) {
                     self.advance();
-                    let mut args = Vec::new();
-                    if !self.check(&TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_expr()?);
-                            if self.check(&TokenKind::Comma) {
-                                self.advance();
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                    self.expect(&TokenKind::RParen, "`)`")?;
+                    let args =
+                        self.parse_comma_separated(&TokenKind::RParen, "`)`", Self::parse_expr)?;
                     Ok(Expr::Call {
                         callee: name,
                         args,
@@ -844,18 +848,8 @@ impl Parser {
             }
             TokenKind::LBracket => {
                 self.advance();
-                let mut elements = Vec::new();
-                if !self.check(&TokenKind::RBracket) {
-                    loop {
-                        elements.push(self.parse_expr()?);
-                        if self.check(&TokenKind::Comma) {
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                self.expect(&TokenKind::RBracket, "`]`")?;
+                let elements =
+                    self.parse_comma_separated(&TokenKind::RBracket, "`]`", Self::parse_expr)?;
                 Ok(Expr::ArrayLit {
                     elements,
                     line: tok.line,
