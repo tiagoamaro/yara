@@ -82,65 +82,61 @@ pub enum KeywordToken {
     False,
 }
 
+/// The single source of truth for Yara's keyword vocabulary: each keyword's
+/// canonical (English, load-bearing) spelling paired with its `KeywordToken`.
+/// Everything keyword-related derives from this one table — `canonical_name`,
+/// `all`, and `default_keywords` — so adding or renaming a keyword is a
+/// one-line edit here, with no parallel list to keep in sync.
+const KEYWORDS: &[(&str, KeywordToken)] = &[
+    ("def", KeywordToken::Def),
+    ("end", KeywordToken::End),
+    ("if", KeywordToken::If),
+    ("elsif", KeywordToken::Elsif),
+    ("else", KeywordToken::Else),
+    ("while", KeywordToken::While),
+    ("for", KeywordToken::For),
+    ("in", KeywordToken::In),
+    ("const", KeywordToken::Const),
+    ("return", KeywordToken::Return),
+    ("nil", KeywordToken::Nil),
+    ("import", KeywordToken::Import),
+    ("class", KeywordToken::Class),
+    ("true", KeywordToken::True),
+    ("false", KeywordToken::False),
+];
+
 impl KeywordToken {
     /// The canonical (English, load-bearing) name used as the left-hand side
     /// in a translation file (`if = se`) and as the lookup key in
-    /// `default_keywords()`. This is the one place the "one fixed English
-    /// name per keyword" vocabulary is spelled out.
+    /// `default_keywords()`. Derived from [`KEYWORDS`] — the reverse of the
+    /// spelling→token direction that table is read in elsewhere. Panics only if
+    /// a variant were ever missing from `KEYWORDS` (a programming error).
     pub fn canonical_name(self) -> &'static str {
-        match self {
-            KeywordToken::Def => "def",
-            KeywordToken::End => "end",
-            KeywordToken::If => "if",
-            KeywordToken::Elsif => "elsif",
-            KeywordToken::Else => "else",
-            KeywordToken::While => "while",
-            KeywordToken::For => "for",
-            KeywordToken::In => "in",
-            KeywordToken::Const => "const",
-            KeywordToken::Return => "return",
-            KeywordToken::Nil => "nil",
-            KeywordToken::Import => "import",
-            KeywordToken::Class => "class",
-            KeywordToken::True => "true",
-            KeywordToken::False => "false",
-        }
+        KEYWORDS
+            .iter()
+            .find(|(_, token)| *token == self)
+            .map(|(name, _)| *name)
+            .expect("every KeywordToken variant must be listed in KEYWORDS")
     }
 
-    /// All keyword tokens, in a stable order — used to build both
-    /// `default_keywords()` and `translations`'s canonical-name lookup table
-    /// without repeating the variant list a third time.
-    pub fn all() -> [KeywordToken; 15] {
-        [
-            KeywordToken::Def,
-            KeywordToken::End,
-            KeywordToken::If,
-            KeywordToken::Elsif,
-            KeywordToken::Else,
-            KeywordToken::While,
-            KeywordToken::For,
-            KeywordToken::In,
-            KeywordToken::Const,
-            KeywordToken::Return,
-            KeywordToken::Nil,
-            KeywordToken::Import,
-            KeywordToken::Class,
-            KeywordToken::True,
-            KeywordToken::False,
-        ]
+    /// All keyword tokens, in `KEYWORDS` order — used by `translations` to look
+    /// a token up by its canonical name. Derived from [`KEYWORDS`] so the
+    /// variant list is never repeated.
+    pub fn all() -> Vec<KeywordToken> {
+        KEYWORDS.iter().map(|(_, token)| *token).collect()
     }
 }
 
-/// The default English keyword table: every `KeywordToken` keyed by its own
-/// `canonical_name()`. This is what `Lexer::new` uses, and what
-/// `Lexer::with_keywords` starts from before a translation file overrides
-/// some subset of entries (see `translations::parse_keyword_file`) — a
-/// translation file only needs to list the words it actually wants to
-/// change, so untranslated keywords silently keep their English spelling.
+/// The default English keyword table: every keyword keyed by its canonical
+/// spelling. This is what `Lexer::new` uses, and what `Lexer::with_keywords`
+/// starts from before a translation file overrides some subset of entries (see
+/// `translations::parse_keyword_file`) — a translation file only needs to list
+/// the words it actually wants to change, so untranslated keywords silently
+/// keep their English spelling. Built straight from [`KEYWORDS`].
 pub fn default_keywords() -> HashMap<String, KeywordToken> {
-    KeywordToken::all()
-        .into_iter()
-        .map(|k| (k.canonical_name().to_string(), k))
+    KEYWORDS
+        .iter()
+        .map(|(name, token)| (name.to_string(), *token))
         .collect()
 }
 
@@ -574,6 +570,38 @@ mod tests {
             .into_iter()
             .map(|t| t.kind)
             .collect()
+    }
+
+    /// The `KEYWORDS` table must be internally consistent: no spelling and no
+    /// token appears twice, and `default_keywords()` reflects every entry.
+    /// Guards the single-source-of-truth table against copy-paste slips now
+    /// that `canonical_name`/`all`/`default_keywords` all derive from it.
+    #[test]
+    fn keyword_table_is_consistent() {
+        let defaults = default_keywords();
+        assert_eq!(
+            defaults.len(),
+            KEYWORDS.len(),
+            "duplicate spelling in KEYWORDS"
+        );
+        let mut tokens = std::collections::HashSet::new();
+        for (spelling, token) in KEYWORDS {
+            assert!(
+                tokens.insert(*token),
+                "duplicate token in KEYWORDS: {token:?}"
+            );
+            assert_eq!(defaults.get(*spelling), Some(token));
+        }
+    }
+
+    /// `canonical_name` must round-trip every token back to its `KEYWORDS`
+    /// spelling — the reverse-lookup direction `translations` relies on.
+    #[test]
+    fn canonical_name_round_trips_every_keyword() {
+        for token in KeywordToken::all() {
+            let name = token.canonical_name();
+            assert_eq!(default_keywords().get(name), Some(&token));
+        }
     }
 
     #[test]
