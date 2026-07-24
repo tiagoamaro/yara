@@ -23,6 +23,19 @@ instead, since everything here must pass `tests/run_examples.rs`.
   Still-reachable allocation survives the sweep:
   99
   ```
+- `free_then_collect.yara` — manual `free` and `collect()` mixed in one program:
+  a hand-freed slot is *not* counted by the later sweep (it is already empty),
+  two unreachable slots are, and a second `collect()` after freeing the survivor
+  reclaims nothing. Actual output:
+  ```
+  Freed one slot by hand
+  collect() reclaimed (expect 2):
+  2
+  Reachable allocation survived:
+  7
+  collect() after freeing everything (expect 0):
+  0
+  ```
 - `linked_list.yara` — a `Node` class with `value: Integer` and `next: Ptr<Node>`
   initialized to nil; demonstrates appending to the list and walking it to sum/print
   values. Contrast with `examples/data_structures/linked_list.yara` (arena style).
@@ -57,4 +70,8 @@ instead, since everything here must pass `tests/run_examples.rs`.
   GC demo, allocate inside a function: the call's scope pops on return
   (`gc.yara`'s `leak_some`).
 - `collect()` counts only slots it freed itself — manually-freed slots are
-  already `None` and don't inflate the count.
+  already `None` and don't inflate the count (`free_then_collect.yara`).
+- The heap is per-`Interpreter`, so imports share it: `kitchen_sink.yara`
+  imports `basic`/`leak`/`linked_list` only. Importing `gc.yara` or
+  `free_then_collect.yara` there would have each collect the other's garbage
+  and print counts different from the ones documented above.
