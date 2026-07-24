@@ -10,6 +10,7 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 - `src/ast/` — AST node definitions. See `src/ast/CLAUDE.md`.
 - `src/diagnostics/` — shared error presentation: the `Diagnostic` trait every stage's error type implements, a `Span`/`Frame` position type (with a `file` hook for the future imported-file fix), and `render`/`render_snippet` (rustc-style header + source line + `^` caret). See `src/diagnostics/CLAUDE.md`.
 - `src/env.rs` — `Environment<T>`, the generic lexical-scope stack (a `Vec<HashMap<String, T>>` searched innermost-first) shared by the typechecker (`Environment<Type>`) and interpreter (`Environment<Value>`). Same *container*, different binding type; each stage still walks the AST with its own separate logic. Replaces the two hand-duplicated `Scope` structs.
+- `src/types.rs` — small type-name utility module (currently just `normalize_type_alias`, `Int`->`Integer` etc.), kept out of any single stage so the parser can canonicalize type names without importing from the lexer.
 - `src/parser/` — recursive-descent parser, tokens to AST. See `src/parser/CLAUDE.md`.
 - `src/typechecker/` — static type checking pass. See `src/typechecker/CLAUDE.md`.
 - `src/interpreter/` — tree-walk evaluator. See `src/interpreter/CLAUDE.md`.

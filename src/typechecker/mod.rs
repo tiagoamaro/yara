@@ -17,31 +17,48 @@ pub enum Type {
     Instance(String),
 }
 
+/// The primitive types, each paired with its canonical annotation/display name.
+/// This one bijective table is the single source of truth for the primitive
+/// name↔`Type` mapping, read in both directions: `from_annotation_name`
+/// resolves a name to a `Type`, `Display` renders a `Type` back to its name.
+/// Compound types (`Array`, `Instance`) carry data a flat table can't and are
+/// handled separately in each direction.
+const PRIMITIVE_TYPES: &[(&str, Type)] = &[
+    ("Integer", Type::Integer),
+    ("Float", Type::Float),
+    ("Boolean", Type::Boolean),
+    ("String", Type::String),
+    ("Nil", Type::Nil),
+];
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Integer => write!(f, "Integer"),
-            Type::Float => write!(f, "Float"),
-            Type::Boolean => write!(f, "Boolean"),
-            Type::String => write!(f, "String"),
-            Type::Nil => write!(f, "Nil"),
             Type::Array(elem) => write!(f, "Array<{elem}>"),
             Type::Instance(name) => write!(f, "{name}"),
+            primitive => {
+                let name = PRIMITIVE_TYPES
+                    .iter()
+                    .find(|(_, ty)| ty == primitive)
+                    .map(|(name, _)| *name)
+                    .expect("every non-Array/Instance Type is listed in PRIMITIVE_TYPES");
+                write!(f, "{name}")
+            }
         }
     }
 }
 
 impl Type {
-    /// `IntArray`/`FloatArray`/`BoolArray`/`StringArray` are the only array
-    /// type annotations — there's no generic `Array<T>` syntax, so each
-    /// element type gets its own concrete annotation name (Pascal-array style).
+    /// Resolves a canonical type-annotation name to a `Type`. Primitives come
+    /// straight from [`PRIMITIVE_TYPES`]; the array annotations
+    /// (`IntArray`/`FloatArray`/`BoolArray`/`StringArray`) are the only array
+    /// type names — there's no generic `Array<T>` syntax, so each element type
+    /// gets its own concrete annotation name (Pascal-array style).
     fn from_annotation_name(name: &str) -> Option<Type> {
+        if let Some((_, ty)) = PRIMITIVE_TYPES.iter().find(|(n, _)| *n == name) {
+            return Some(ty.clone());
+        }
         match name {
-            "Integer" => Some(Type::Integer),
-            "Float" => Some(Type::Float),
-            "Boolean" => Some(Type::Boolean),
-            "String" => Some(Type::String),
-            "Nil" => Some(Type::Nil),
             "IntArray" => Some(Type::Array(Box::new(Type::Integer))),
             "FloatArray" => Some(Type::Array(Box::new(Type::Float))),
             "BoolArray" => Some(Type::Array(Box::new(Type::Boolean))),

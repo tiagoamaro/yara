@@ -1,7 +1,8 @@
 //! Recursive-descent parser: tokens -> AST.
 
 use crate::ast::{BinOp, Expr, FieldDecl, Param, Stmt, TypeAnnotation, UnOp};
-use crate::lexer::{normalize_type_alias, Token, TokenKind};
+use crate::lexer::{Token, TokenKind};
+use crate::types::normalize_type_alias;
 use std::fmt;
 
 /// A parse-time failure. Mirrors `lexer::LexError`'s shape (a `message` plus
@@ -130,7 +131,7 @@ impl Parser {
     /// Parses a type name (after a `:` in a param/field/var/const/return-type
     /// position) as a bare identifier, then normalizes short aliases (`Int`,
     /// `Str`, `Bool`, ...) to their canonical names (`Integer`, `String`,
-    /// `Boolean`, ...) via `lexer::normalize_type_alias`. Alias resolution
+    /// `Boolean`, ...) via `types::normalize_type_alias`. Alias resolution
     /// happens here in the parser rather than the lexer so the lexer only
     /// ever emits raw identifier tokens.
     fn parse_type_annotation(&mut self) -> Result<TypeAnnotation, ParseError> {

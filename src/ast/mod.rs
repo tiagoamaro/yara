@@ -20,7 +20,7 @@
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation {
     /// Canonical (alias-normalized) type name, e.g. `Integer`, `Float`, `Boolean`, `String`.
-    /// The parser calls `lexer::normalize_type_alias` before constructing this, so
+    /// The parser calls `types::normalize_type_alias` before constructing this, so
     /// short-hand aliases like `Int`/`Bool`/`Str` are already resolved here — the
     /// typechecker and interpreter never have to know about aliases at all.
     pub name: String,

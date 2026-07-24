@@ -10,7 +10,8 @@ Implemented. `Lexer::new(source).tokenize() -> Result<Vec<Token>, LexError>`.
 - `TokenKind` covers literals (Int/Float/Str/Bool), identifiers, keywords (`def end if elsif else while for in const return nil true false`), operators (`+ - * / == != < > <= >= = := : .. ( ) ,`), `Eof`.
 - Comments (`#...`) and whitespace skipped in `skip_whitespace_and_comments`.
 - String literals support `\n \t \" \\` escapes; unterminated string/char errors report line:column via `LexError`.
-- Type-alias normalization lives in `normalize_type_alias()` (`Int`->`Integer`, `Bool`->`Boolean`, `Str`->`String`) — NOT applied during lexing itself (identifiers stay raw `Ident(String)`); parser/typechecker should call this helper when resolving type annotations, so `Int` and `Integer` compare equal downstream.
+- Keyword vocabulary is a single `KEYWORDS: &[(&str, KeywordToken)]` const; `canonical_name`, `all`, and `default_keywords` all derive from it (no parallel lists to keep in sync).
+- Type-alias normalization is NOT in the lexer — it moved to `src/types.rs` (`types::normalize_type_alias`, `Int`->`Integer`, `Bool`->`Boolean`, `Str`->`String`) so the parser no longer imports from the lexer just to canonicalize a type name. Not applied during lexing itself either way (identifiers stay raw `Ident(String)`).
 - Tests in `mod.rs` (`cargo test`) cover tokenizing a function def, line/column tracking, literals, comments, range operator, unterminated string, alias normalization.
 
 ## Gotchas

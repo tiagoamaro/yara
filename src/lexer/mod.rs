@@ -172,18 +172,6 @@ impl crate::diagnostics::Diagnostic for LexError {
     }
 }
 
-/// Normalizes type-alias identifiers to their canonical long form.
-/// `Int` -> `Integer`, `Bool` -> `Boolean`, `Str` -> `String`. All other
-/// identifiers pass through unchanged.
-pub fn normalize_type_alias(name: &str) -> &str {
-    match name {
-        "Int" => "Integer",
-        "Bool" => "Boolean",
-        "Str" => "String",
-        other => other,
-    }
-}
-
 /// Walks a Yara source file one `char` at a time and turns it into a flat
 /// list of tokens (see `tokenize`). This is the very first stage of the
 /// pipeline: `Parser` (in `parser::`) only ever sees `Token`s, never raw
@@ -681,14 +669,6 @@ mod tests {
         let err = Lexer::new("\"abc").tokenize().unwrap_err();
         assert_eq!(err.line, 1);
         assert_eq!(err.column, 1);
-    }
-
-    #[test]
-    fn type_alias_normalization() {
-        assert_eq!(normalize_type_alias("Int"), "Integer");
-        assert_eq!(normalize_type_alias("Bool"), "Boolean");
-        assert_eq!(normalize_type_alias("Str"), "String");
-        assert_eq!(normalize_type_alias("Float"), "Float");
     }
 
     #[test]
