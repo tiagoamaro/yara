@@ -20,13 +20,15 @@ pub enum Type {
     Array(Box<Type>),
     /// An instance of a user-defined `class`, identified by class name.
     Instance(String),
+    /// An opt-in manual-memory pointer to a heap cell holding a `T` (see `alloc`/`deref`/`set_deref`/`free`).
+    Pointer(Box<Type>),
 }
 
 /// The primitive types, each paired with its canonical annotation/display name.
 /// This one bijective table is the single source of truth for the primitive
 /// name↔`Type` mapping, read in both directions: `from_annotation_name`
 /// resolves a name to a `Type`, `Display` renders a `Type` back to its name.
-/// Compound types (`Array`, `Instance`) carry data a flat table can't and are
+/// Compound types (`Array`, `Instance`, `Pointer`) carry data a flat table can't and are
 /// handled separately in each direction.
 const PRIMITIVE_TYPES: &[(&str, Type)] = &[
     ("Integer", Type::Integer),
@@ -40,6 +42,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Array(elem) => write!(f, "Array<{elem}>"),
+            Type::Pointer(elem) => write!(f, "Ptr<{elem}>"),
             Type::Instance(name) => write!(f, "{name}"),
             primitive => {
                 let name = PRIMITIVE_TYPES
@@ -58,10 +61,16 @@ impl Type {
     /// straight from [`PRIMITIVE_TYPES`]; the array annotations
     /// (`IntArray`/`FloatArray`/`BoolArray`/`StringArray`) are the only array
     /// type names — there's no generic `Array<T>` syntax, so each element type
-    /// gets its own concrete annotation name (Pascal-array style).
+    /// gets its own concrete annotation name (Pascal-array style). Pointer
+    /// annotations (`Ptr<T>`) are decoded recursively.
     fn from_annotation_name(name: &str) -> Option<Type> {
         if let Some((_, ty)) = PRIMITIVE_TYPES.iter().find(|(n, _)| *n == name) {
             return Some(ty.clone());
+        }
+        if name.starts_with("Ptr<") && name.ends_with('>') {
+            let inner_name = &name[4..name.len() - 1];
+            return Type::from_annotation_name(inner_name)
+                .map(|inner| Type::Pointer(Box::new(inner)));
         }
         match name {
             "IntArray" => Some(Type::Array(Box::new(Type::Integer))),
@@ -396,5 +405,35 @@ mod tests {
         let src = format!("{HELLO_CLASS}h = Hello.new(5, 6)");
         let err = check(&src).unwrap_err();
         assert!(err.message.contains("expects 1 argument"));
+    }
+
+    #[test]
+    fn pointer_alloc_deref_free() {
+        assert!(check(
+            "p: Ptr<Integer> = alloc(5)\nx: Integer = deref(p)\nset_deref(p, 9)\nfree(p)"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn pointer_set_deref_type_mismatch() {
+        let err = check("p: Ptr<Integer> = alloc(5)\nset_deref(p, 1.5)").unwrap_err();
+        assert!(
+            err.message.contains("set_deref")
+                && err.message.contains("Ptr<Integer>")
+                && err.message.contains("Float")
+        );
+    }
+
+    #[test]
+    fn pointer_deref_non_pointer() {
+        let err = check("deref(3)").unwrap_err();
+        assert!(err.message.contains("deref") && err.message.contains("pointer"));
+    }
+
+    #[test]
+    fn pointer_declared_vs_actual_mismatch() {
+        let err = check("p: Ptr<Float> = alloc(5)").unwrap_err();
+        assert!(err.message.contains("type mismatch"));
     }
 }

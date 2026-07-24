@@ -1,0 +1,5 @@
+runtime error: double free: pointer ptr#0 was already freed
+  --> examples/errors/double_free.yara:4:1
+  |
+4 | free(p)
+  | ^

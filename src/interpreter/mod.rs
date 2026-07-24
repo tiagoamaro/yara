@@ -29,6 +29,9 @@ pub enum Value {
     /// share this one map), plus the class name for method dispatch.
     /// Reference semantics, same rationale as `Array`.
     Instance(Rc<RefCell<HashMap<String, Value>>>, String),
+    /// An opt-in manual-memory pointer: an index into `Interpreter::heap`, not a Rust reference.
+    /// `free` empties the slot; `deref`/`set_deref` on a freed slot is a `RuntimeError` (visible use-after-free — the teaching point).
+    Pointer(usize),
 }
 
 impl fmt::Display for Value {
@@ -50,6 +53,7 @@ impl fmt::Display for Value {
                 write!(f, "]")
             }
             Value::Instance(_, class_name) => write!(f, "#<{class_name}>"),
+            Value::Pointer(idx) => write!(f, "ptr#{idx}"),
         }
     }
 }
@@ -155,6 +159,8 @@ pub struct Interpreter {
     functions: HashMap<String, FunctionDecl>,
     classes: HashMap<String, ClassDecl>,
     call_stack: Vec<StackFrame>,
+    /// The modeled heap for `alloc`/`deref`/`set_deref`/`free`: one slot per allocation; `None` marks a freed slot (slots are never reused, so a stale pointer reliably reports use-after-free instead of aliasing a new allocation).
+    heap: Vec<Option<Value>>,
 }
 
 impl Default for Interpreter {
@@ -170,6 +176,7 @@ impl Interpreter {
             functions: HashMap::new(),
             classes: HashMap::new(),
             call_stack: Vec::new(),
+            heap: Vec::new(),
         }
     }
 
@@ -523,5 +530,27 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(42)));
+    }
+
+    #[test]
+    fn pointer_alloc_deref_roundtrip() {
+        let interp = run(
+            "p: Ptr<Integer> = alloc(5)\nx: Integer = deref(p)\nset_deref(p, 9)\ny: Integer = deref(p)",
+        )
+        .unwrap();
+        assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(5)));
+        assert_eq!(interp.lookup_var("y"), Some(&Value::Integer(9)));
+    }
+
+    #[test]
+    fn pointer_use_after_free_errors() {
+        let err = run("p: Ptr<Integer> = alloc(5)\nfree(p)\nderef(p)").unwrap_err();
+        assert!(err.message.contains("use after free"));
+    }
+
+    #[test]
+    fn pointer_double_free_errors() {
+        let err = run("p: Ptr<Integer> = alloc(5)\nfree(p)\nfree(p)").unwrap_err();
+        assert!(err.message.contains("double free"));
     }
 }
