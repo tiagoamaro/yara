@@ -265,9 +265,16 @@ impl TypeChecker {
     /// names resolve to them (implicit `self`, Ruby-ivar style).
     fn check_classes(&mut self, program: &[Stmt]) -> Result<(), TypeError> {
         for stmt in program {
-            let Stmt::ClassDef { name, methods, .. } = stmt else {
+            let Stmt::ClassDef {
+                name,
+                fields,
+                methods,
+                ..
+            } = stmt
+            else {
                 continue;
             };
+            self.check_fields_assigned_in_initializer(name, fields, methods)?;
             let field_types = self.classes[name].fields.clone();
             for m in methods {
                 let Stmt::FunctionDef {
@@ -306,6 +313,52 @@ impl TypeChecker {
                     }
                 }
                 self.pop_scope();
+            }
+        }
+        Ok(())
+    }
+
+    /// Requires every instance-variable declaration (a `FieldDecl` — always
+    /// valueless by construction) to be assigned somewhere in the class's
+    /// `initializer`, closing the soundness gap where reading a never-assigned
+    /// field type-checked as its declared type but evaluated to `Nil`.
+    ///
+    /// The check is deliberately flow-insensitive: an assignment anywhere in
+    /// the initializer body (including inside an `if` branch or loop) counts,
+    /// so a conditionally-assigned field still passes. That over-approximation
+    /// is accepted — the goal is catching the common "declared but never set
+    /// anywhere" mistake, not full definite-assignment analysis. Inside
+    /// methods a bare `count = number` assignment parses as `Stmt::VarDecl`
+    /// (implicit self), so collecting `VarDecl` names is what detects field
+    /// assignment.
+    fn check_fields_assigned_in_initializer(
+        &self,
+        class_name: &str,
+        fields: &[crate::ast::FieldDecl],
+        methods: &[Stmt],
+    ) -> Result<(), TypeError> {
+        if fields.is_empty() {
+            return Ok(());
+        }
+        let initializer = methods.iter().find_map(|m| match m {
+            Stmt::FunctionDef { name, body, .. } if name == "initializer" => Some(body),
+            _ => None,
+        });
+        let mut assigned = std::collections::HashSet::new();
+        if let Some(body) = initializer {
+            collect_assigned_names(body, &mut assigned);
+        }
+        for f in fields {
+            if !assigned.contains(f.name.as_str()) {
+                return Err(TypeError {
+                    message: format!(
+                        "field `{}` of class `{class_name}` is never assigned in `initializer` \
+                         (it would be `Nil` at runtime, not `{}`)",
+                        f.name, f.type_ann.name
+                    ),
+                    line: f.line,
+                    column: f.column,
+                });
             }
         }
         Ok(())
@@ -1216,6 +1269,44 @@ impl TypeChecker {
     }
 }
 
+/// Collects every name assigned anywhere in `body` into `assigned`,
+/// recursing through `if`/`while`/`for` bodies (flow-insensitively — a
+/// conditional assignment still counts; see
+/// `check_fields_assigned_in_initializer`). Both a bare `name = value`
+/// (`Stmt::VarDecl`, how implicit-self field assignment parses inside
+/// methods) and an explicit `object.field = value` (`Stmt::FieldAssign`)
+/// register the assigned name.
+fn collect_assigned_names(body: &[Stmt], assigned: &mut std::collections::HashSet<String>) {
+    for stmt in body {
+        match stmt {
+            Stmt::VarDecl { name, .. } => {
+                assigned.insert(name.clone());
+            }
+            Stmt::FieldAssign { field, .. } => {
+                assigned.insert(field.clone());
+            }
+            Stmt::If {
+                then_body,
+                elsif_branches,
+                else_body,
+                ..
+            } => {
+                collect_assigned_names(then_body, assigned);
+                for (_, branch) in elsif_branches {
+                    collect_assigned_names(branch, assigned);
+                }
+                if let Some(body) = else_body {
+                    collect_assigned_names(body, assigned);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                collect_assigned_names(body, assigned);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Renders a `BinOp` back to its source-syntax symbol (e.g. `BinOp::Add` ->
 /// `"+"`), used only to build human-readable `TypeError` messages in
 /// `check_binary_op`.
@@ -1368,6 +1459,35 @@ mod tests {
     }
 
     const HELLO_CLASS: &str = "class Hello\n  const PI: Float = 3.14159\n  count: Integer\n\n  def initializer(number: Int)\n    count = number\n  end\nend\n";
+
+    /// A field never assigned in `initializer` (here: no initializer at all)
+    /// must be rejected at check time — it would read as `Nil` at runtime.
+    #[test]
+    fn rejects_field_never_assigned_in_initializer() {
+        let err = check("class Counter\n  count: Integer\nend\n").unwrap_err();
+        assert!(err.message.contains("never assigned in `initializer`"));
+        assert_eq!((err.line, err.column), (2, 3));
+    }
+
+    /// Assigned in a *non*-initializer method only — still rejected: the
+    /// window between construction and that method call reads `Nil`.
+    #[test]
+    fn rejects_field_assigned_only_outside_initializer() {
+        let err =
+            check("class Counter\n  count: Integer\n\n  def bump()\n    count = 1\n  end\nend\n")
+                .unwrap_err();
+        assert!(err.message.contains("never assigned in `initializer`"));
+    }
+
+    /// Flow-insensitivity: an assignment inside an `if` branch of the
+    /// initializer counts as assigned.
+    #[test]
+    fn accepts_field_assigned_conditionally_in_initializer() {
+        assert!(check(
+            "class Counter\n  count: Integer\n\n  def initializer(big: Bool)\n    if big\n      count = 100\n    else\n      count = 0\n    end\n  end\nend\n"
+        )
+        .is_ok());
+    }
 
     #[test]
     fn class_construction_field_access_and_method_call() {
