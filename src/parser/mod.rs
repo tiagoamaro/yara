@@ -20,6 +20,18 @@ impl fmt::Display for ParseError {
     }
 }
 
+impl crate::diagnostics::Diagnostic for ParseError {
+    fn kind(&self) -> &str {
+        "parse error"
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+    fn span(&self) -> crate::diagnostics::Span {
+        crate::diagnostics::Span::new(self.line, self.column)
+    }
+}
+
 /// Holds the full token stream produced by the lexer plus a cursor (`pos`)
 /// into it. There is no separate "current token" field: every method reads
 /// through `peek`/`advance`, so `pos` is the single source of truth for where

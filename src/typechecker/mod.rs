@@ -63,6 +63,18 @@ impl fmt::Display for TypeError {
     }
 }
 
+impl crate::diagnostics::Diagnostic for TypeError {
+    fn kind(&self) -> &str {
+        "type error"
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+    fn span(&self) -> crate::diagnostics::Span {
+        crate::diagnostics::Span::new(self.line, self.column)
+    }
+}
+
 #[derive(Clone)]
 struct FunctionSig {
     param_types: Vec<Type>,

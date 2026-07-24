@@ -164,6 +164,18 @@ impl fmt::Display for LexError {
     }
 }
 
+impl crate::diagnostics::Diagnostic for LexError {
+    fn kind(&self) -> &str {
+        "lex error"
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+    fn span(&self) -> crate::diagnostics::Span {
+        crate::diagnostics::Span::new(self.line, self.column)
+    }
+}
+
 /// Normalizes type-alias identifiers to their canonical long form.
 /// `Int` -> `Integer`, `Bool` -> `Boolean`, `Str` -> `String`. All other
 /// identifiers pass through unchanged.
