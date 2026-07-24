@@ -25,6 +25,6 @@ Implemented. `Interpreter::new().run_program(&[Stmt]) -> Result<(), RuntimeError
 
 ## Gotchas
 - Division by zero is checked only for `Integer / Integer` (float division by zero silently yields `inf`/`NaN`, matching IEEE 754 — revisit if that's undesirable for a "friendly errors" language).
-- `exec_function_body` duplicates the "is this the last statement" logic from `typechecker::check_body_return_type` — any AST changes to `Stmt` must update both in lockstep.
+- `exec_function_body` duplicates the "is this the last statement" logic from `typechecker::check_body_return_type` — any AST changes to `Stmt` must update both in lockstep. The `tail_if_return_value_agrees_across_stages` test runs tail-`if` programs (plain/elsif/nested/recursive) through *both* the typechecker and interpreter and asserts the computed value, so a divergence surfaces as a failing test.
 - Instance vars start life as `Value::Nil` until something assigns them (no "definitely assigned" tracking — matches the typechecker's known gap, see its `CLAUDE.md`); reading one too early just silently gets `Nil` rather than erroring.
 - No inheritance — `call_method`/`construct` only ever look at the exact class name stored in `Value::Instance`.
