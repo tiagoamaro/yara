@@ -25,6 +25,8 @@ flowchart TD
 
 Every stage's error type (`LexError`, `ParseError`, `ResolveError`, `TypeError`, `RuntimeError`) implements the `diagnostics::Diagnostic` trait (`kind`/`message`/`span`, plus `frames` for `RuntimeError`'s call stack) — which is what lets `diagnostics::render`, invoked by `main.rs`'s one-line `stage` helper, render all five with a single function instead of five bespoke printers. The stages keep their own distinct error types; only the rendering is shared.
 
+Error positions in imported files are resolved via `diagnostics::SourceMap`: the resolver assigns each imported file a disjoint range of virtual line numbers, shifts the imported AST's positions into that range, and `render_with_map` uses the map to translate a diagnostic's virtual line back to (file, local line, snippet). This ensures errors from imported files render their correct source snippets, not the entry file's.
+
 Beyond the five pipeline stages, a few small modules are shared across them, each a single source of truth for one concern: `diagnostics` (error rendering, above), `env` (the `Environment<T>` scope stack the typechecker and interpreter both use — over `Type` and `Value` respectively), `types` (type-name alias normalization, `Int`→`Integer`), and `builtins` (the array-builtin name+arity registry both stages consult). See `src/CLAUDE.md`.
 
 ## Lexer: character to token

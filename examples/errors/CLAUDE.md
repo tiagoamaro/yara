@@ -1,9 +1,9 @@
 # examples/errors/
 
-Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`print_error`/`render_snippet`) lives in `src/main.rs`, not in any compiler stage — see its doc comment.
+Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
 
 ## Status
-All nine verified against the actual binary (2026-07-18) after `print_error`/`render_snippet` landed; output below is real, not illustrative.
+All eleven verified against the actual binary (2026-07-24) after the imported-file snippet fix landed; output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -93,9 +93,18 @@ All nine verified against the actual binary (2026-07-18) after `print_error`/`re
   10 | h = Hello.new(5, 6)
      |          ^
   ```
+- `import_type_error.yara` — imports `import_type_error_helper.yara` and calls its `bad()`; the type error lives in the *helper*, and the snippet renders from the helper file with its own local line, not the entry file:
+  ```
+  type error: function `bad` declared to return `Integer`, but returns `String`
+    --> examples/errors/import_type_error_helper.yara:1:1
+    |
+  1 | def bad(): Integer
+    | ^
+  ```
+- `import_type_error_helper.yara` — the imported helper: `bad()` is declared `Integer` but returns a `String`. Fails at typecheck on its own too, which is why it has its own `Type` expected-stage entry in `tests/run_examples.rs`.
 
 ## Gotchas
 - `undefined_variable.yara` shows that referencing an undefined variable is a **typecheck-time** error, not a runtime one — Yara's typechecker tracks variable scope itself (see `src/typechecker/CLAUDE.md`), so this never reaches the interpreter.
 - The caret is always a single `^`, not an underline spanning the whole offending token/expression — good enough to point at *where*, not yet at *how wide*. Revisit if imprecise pointing becomes confusing on longer tokens.
-- **Known gap**: `print_error`'s source snippet is read from the *entry file* the user ran, not from whichever file a position actually originated in. Since `resolver` splices an imported file's statements into the importer before typechecking/interpretation ever run (see `src/resolver/CLAUDE.md`), an error whose line:column belongs to an *imported* file would render the wrong snippet (or an out-of-range one) — none of these examples exercise that combination, so it hasn't bitten yet, but it's a real latent bug until errors carry their own file path alongside line/column.
+- The `import_type_error` / `import_type_error_helper` pair demonstrates that errors in imported files now render their correct source snippets via `diagnostics::SourceMap` virtual-line resolution — the resolver assigns each imported file a disjoint range of virtual lines, shifts imported AST positions into it, and diagnostics map virtual lines back to (file, local line) during rendering.
 - Fixing the `Debug`-leaking `cannot apply \`Add\`` message (it now reads `cannot apply \`+\``) is exactly the kind of rough edge this folder exists to catch — if you add a new error path, run it for real and paste the actual output here rather than guessing.

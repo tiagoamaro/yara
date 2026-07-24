@@ -24,10 +24,15 @@ end-to-end `tests/` possible (a binary-only crate can't be `use`d from tests).
 
 - **`main.rs`** — the binary crate root: a thin CLI over the library. Parses
   `yara run <file> [--keywords <path>]`, reads the source (and optional keyword
-  file), and runs the stages via a `stage(...)` helper that renders any error
-  with `diagnostics::render` and exits. No compilation logic lives here — it only
-  drives library stages and prints their errors rustc-style. Carries no unit
-  tests of its own — snippet rendering (and its tests) now live in `diagnostics/`.
+  file), and runs the stages via a `stage(...)` helper (lex/parse/translation errors
+  only) and `stage_mapped(...)` helper (resolver/typechecker/interpreter errors with
+  `diagnostics::render_with_map`). The `SourceMap` is built after parsing, seeded
+  with the entry file path and source, then passed to the resolver; the resolver
+  registers each imported file in the map and shifts their AST line numbers into a
+  virtual line space, so error positions in imported code map back to the correct file
+  and local line. No compilation logic lives here — it only drives library stages and
+  prints their errors rustc-style. Carries no unit tests of its own — snippet rendering
+  (and its tests) now live in `diagnostics/`.
 
 - **`env.rs`** — `Environment<T>`, the generic lexical-scope stack
   (`Vec<HashMap<String, T>>`, searched innermost-first for shadowing). Shared by

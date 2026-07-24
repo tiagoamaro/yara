@@ -18,11 +18,23 @@ that used to live in `main.rs`.
 - `kind()` is the label before the message (`"lex error"`, `"type error"`, …).
   `frames()` defaults to empty; only `RuntimeError` overrides it, returning its
   `call_stack` **reversed** (innermost first, the order the trace prints).
-- `Span { line, column, file: Option<PathBuf> }`. `file` is always `None` today —
-  it's the hook for the known imported-file-snippet gap (see root `CLAUDE.md` TODO):
-  when errors start carrying their own file, `render` can prefer it with no further
-  plumbing. Built with `Span::new(line, column)` at each error site (stages still
-  store loose `line`/`column`; no full-AST `Span` migration was done).
+- `Span { line, column }` — just position, no file path. Lines are *virtual*
+  after imports are resolved: the entry file occupies virtual lines 1..=N,
+  and each imported file is appended via its own line-count offset.
+  Built with `Span::new(line, column)` at each error site (stages still store loose
+  `line`/`column`; no full-AST `Span` migration was done).
+- `SourceMap` + `SourceFile { start_line, path, source }` — tracks the virtual
+  line-space layout. Entry file is added first; `add_file(path, source)` appends
+  each import, reserving its line count (minimum 1) and returning the offset
+  used by the resolver when splicing. `lookup(line)` returns the file whose
+  virtual-line range contains a given line. Same trick as rustc's SourceMap,
+  with line numbers instead of byte offsets.
+- `render_with_map(&dyn Diagnostic, &SourceMap) -> String` — resolves the primary
+  span and every stack frame through the map: for each, look up which file and
+  what local line, then fetch the source snippet from that file. Produces correct
+  carets for post-import stages (typechecker, interpreter). Old `render(diag, path,
+  source)` now delegates to `render_with_map` with a single-file map — output
+  byte-identical for single-file programs (Phase 1 acceptance check still holds).
 - `render(&dyn Diagnostic, path, source) -> String` builds the whole block:
   `kind: message`, `  --> path:line:column`, the snippet, then a frame line +
   snippet per `Frame`. Returned as a `String` (not printed) so it's unit-testable;
@@ -31,10 +43,13 @@ that used to live in `main.rs`.
   with a `^` caret; a line past EOF yields `""` rather than panicking.
 
 ## Gotchas
-- `render` takes `path`/`source` from the caller, so the caret is only correct when
-  the error's position belongs to that file. Translation errors are rendered against
-  the *keyword file* (`main.rs` passes `kw_path`/`kw_text`); the imported-file gap
-  remains until `Span.file` is populated.
-- Output is byte-for-byte identical to the pre-refactor `print_error`. If you change
-  the format here, the `examples/errors/*` golden comparisons (and anyone eyeballing
-  error output) will notice — that identity is the Phase 1 acceptance check.
+- `render` (single-file) and `render_with_map` (multi-file) produce output that is
+  byte-for-byte identical to the pre-refactor `print_error` for single-file programs.
+  If you change the format here, the `examples/errors/*` golden comparisons (and
+  anyone eyeballing error output) will notice — that identity is the Phase 1
+  acceptance check. Adding new span/frame fields or changing the caret character
+  will break those comparisons.
+- Post-import stages (typechecker, interpreter) use `render_with_map`; carets are
+  now guaranteed correct even when errors originate from imported files (the
+  imported-file snippet gap is FIXED). Translation errors are still rendered against
+  the *keyword file* via plain `render` (single-file).
