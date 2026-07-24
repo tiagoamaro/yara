@@ -18,7 +18,7 @@ Done and committed, suite green (116 unit + 4 integration, fmt clean):
 2. Structure item 5 (uniform `Span` in error types) — opportunistic.
 3. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed.
 4. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
-5. Consider promoting `kitchen_sink.yara` to also import the pointer examples, and a `free`-then-`collect` interaction example. Small, optional.
+5. ~~Promote `kitchen_sink.yara` to also import the pointer examples, plus a `free`-then-`collect` interaction example.~~ **Done** (2026-07-24): `examples/pointers/free_then_collect.yara` added (hand-freed slot not double-counted by a later sweep; second sweep reclaims 0); `kitchen_sink.yara` now imports `pointers/basic`, `pointers/leak`, `pointers/linked_list`. The `collect()` examples stay out of the kitchen sink on purpose — imports splice into one program over one shared heap, so `gc`/`free_then_collect` would reclaim each other's garbage and print counts different from their documented standalone output; and `linked_list`/`circular_list` both declare `class Node`, so only one can be imported.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
 Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.
