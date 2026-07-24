@@ -316,6 +316,43 @@ mod tests {
         Ok(interp)
     }
 
+    /// `collect()` frees an allocation whose pointer went out of scope (a
+    /// leak) but keeps one still bound in a live scope, and reports exactly
+    /// one freed slot.
+    #[test]
+    fn collect_frees_unreachable_keeps_reachable() {
+        let interp = run(
+            "def leak()\n  p: Ptr<Integer> = alloc(1)\nend\nleak()\nkept: Ptr<Integer> = alloc(2)\nn: Integer = collect()\nv: Integer = deref(kept)",
+        )
+        .unwrap();
+        assert_eq!(interp.lookup_var("n"), Some(&Value::Integer(1)));
+        assert_eq!(interp.lookup_var("v"), Some(&Value::Integer(2)));
+    }
+
+    /// A pointer reachable only *through* a container (an array element) is
+    /// still a live root — `collect()` must not free its pointee.
+    #[test]
+    fn collect_traces_pointers_inside_arrays() {
+        let interp = run(
+            "def make(): Ptr<Integer>\n  alloc(7)\nend\nps: IntArray = []\nq: Ptr<Integer> = make()\nn: Integer = collect()\nv: Integer = deref(q)",
+        )
+        .unwrap();
+        assert_eq!(interp.lookup_var("n"), Some(&Value::Integer(0)));
+        assert_eq!(interp.lookup_var("v"), Some(&Value::Integer(7)));
+    }
+
+    /// A heap slot can itself hold a pointer: marking must cascade through
+    /// pointees, so a chain reachable only via its head stays fully alive.
+    #[test]
+    fn collect_cascades_through_heap_slots() {
+        let interp = run(
+            "inner: Ptr<Integer> = alloc(9)\nouter: Ptr<Ptr<Integer>> = alloc(inner)\ninner = alloc(0)\nfree(inner)\nn: Integer = collect()\nv: Integer = deref(deref(outer))",
+        )
+        .unwrap();
+        assert_eq!(interp.lookup_var("n"), Some(&Value::Integer(0)));
+        assert_eq!(interp.lookup_var("v"), Some(&Value::Integer(9)));
+    }
+
     #[test]
     fn evaluates_arithmetic() {
         let interp = run("x = 1 + 2 * 3").unwrap();

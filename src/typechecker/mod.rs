@@ -436,4 +436,15 @@ mod tests {
         let err = check("p: Ptr<Float> = alloc(5)").unwrap_err();
         assert!(err.message.contains("type mismatch"));
     }
+
+    #[test]
+    fn collect_returns_integer() {
+        assert!(check("n: Integer = collect()").is_ok());
+    }
+
+    #[test]
+    fn collect_type_mismatch() {
+        let err = check("n: String = collect()").unwrap_err();
+        assert!(err.message.contains("type mismatch"));
+    }
 }

@@ -171,6 +171,7 @@ fn every_builtin_is_handled_by_both_stages() {
             "deref" => "p: Ptr<Integer> = alloc(5)\nx: Integer = deref(p)\n",
             "set_deref" => "p: Ptr<Integer> = alloc(5)\nset_deref(p, 9)\n",
             "free" => "p: Ptr<Integer> = alloc(5)\nfree(p)\n",
+            "collect" => "n: Integer = collect()\n",
             other => {
                 panic!("no probe snippet for builtin `{other}` — add one so this test covers it")
             }

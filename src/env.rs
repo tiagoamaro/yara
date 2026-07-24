@@ -90,6 +90,13 @@ impl<T> Environment<T> {
     pub fn current(&self) -> &HashMap<String, T> {
         self.scopes.last().unwrap()
     }
+
+    /// Every binding's value across every scope on the stack, innermost last.
+    /// Exposed for the interpreter's mark-and-sweep collector, which treats
+    /// all live bindings (in every active scope) as GC roots.
+    pub fn iter_values(&self) -> impl Iterator<Item = &T> {
+        self.scopes.iter().flat_map(|s| s.values())
+    }
 }
 
 #[cfg(test)]
@@ -135,5 +142,17 @@ mod tests {
     fn unbound_name_is_none() {
         let env: Environment<i32> = Environment::new();
         assert_eq!(env.lookup("nope"), None);
+    }
+
+    /// `iter_values` returns every binding across every scope on the stack.
+    #[test]
+    fn iter_values_collects_all_bindings() {
+        let mut env: Environment<i32> = Environment::new();
+        env.declare("x", 1);
+        env.push_scope();
+        env.declare("y", 2);
+        let mut values: Vec<i32> = env.iter_values().copied().collect();
+        values.sort();
+        assert_eq!(values, [1, 2]);
     }
 }
