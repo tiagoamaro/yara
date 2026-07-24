@@ -49,15 +49,17 @@ end-to-end `tests/` possible (a binary-only crate can't be `use`d from tests).
   name↔`Type` table (`PRIMITIVE_TYPES`) lives in `typechecker/` instead, since it
   needs the `Type` enum.
 
-- **`builtins.rs`** — registry of the array builtins (`len`/`push`/`get`/`set`/
+- **`builtins.rs`** — unified registry of the array builtins (`len`/`push`/`get`/`set`/
   `pop`), pointer builtins (`alloc`/`deref`/`set_deref`/`free`), and the GC
-  builtin (`collect`, arity 0) with each one's
-  name + arity. Single source of truth for *which* names are builtins and their
-  arity; the typechecker and interpreter each still implement the builtin's
-  *behavior* in their own parallel `match` (shared metadata, separate logic —
-  the deliberate teaching split). `print` is a separate variadic path and is
-  intentionally not in the registry. An integration test (`tests/run_examples.rs`)
-  asserts every registry entry is wired into both stages.
+  builtin (`collect`, arity 0). Each registry entry holds the builtin's name, arity,
+  and function pointers to its typecheck and execution logic — single source of
+  truth for which builtins exist, how they're typed, and how they execute.
+  Adding a builtin requires: (1) a `Builtin` entry here with check/eval function
+  pointers, (2) a `CheckFn` in `src/typechecker/calls.rs`, (3) an `EvalFn` in
+  `src/interpreter/calls.rs` (compile-time field requirements enforce both exist).
+  `print` is a separate variadic path and is intentionally not in the registry.
+  An integration test (`tests/run_examples.rs`) asserts every registry entry is
+  wired into both stages via the probe-snippet pattern.
 
 ## Conventions
 

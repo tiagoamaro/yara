@@ -13,6 +13,11 @@ mod classes;
 mod expressions;
 mod statements;
 
+pub(crate) use calls::{
+    eval_alloc, eval_collect, eval_deref, eval_free, eval_get, eval_len, eval_pop, eval_push,
+    eval_set, eval_set_deref,
+};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i64),

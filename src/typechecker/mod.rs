@@ -10,6 +10,11 @@ mod classes;
 mod expressions;
 mod statements;
 
+pub(crate) use calls::{
+    check_alloc, check_collect, check_deref, check_free, check_get, check_len, check_pop,
+    check_push, check_set, check_set_deref,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Integer,
