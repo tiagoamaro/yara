@@ -30,3 +30,4 @@ pub mod parser;
 pub mod resolver;
 pub mod translations;
 pub mod typechecker;
+pub mod types;
