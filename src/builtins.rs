@@ -1,5 +1,5 @@
-//! Registry of Yara's builtins: array operations (`len`, `push`, `get`, `set`, `pop`)
-//! and pointer operations (`alloc`, `deref`, `set_deref`, `free`).
+//! Registry of Yara's builtins: array operations (`len`, `push`, `get`, `set`, `pop`),
+//! pointer operations (`alloc`, `deref`, `set_deref`, `free`), and GC (`collect`).
 //!
 //! These aren't user-defined functions and aren't in any `functions` table;
 //! they're recognized ad hoc by name in both the typechecker (which type-checks
@@ -67,6 +67,10 @@ pub const BUILTINS: &[Builtin] = &[
     Builtin {
         name: "free",
         arity: 1,
+    },
+    Builtin {
+        name: "collect",
+        arity: 0,
     },
 ];
 

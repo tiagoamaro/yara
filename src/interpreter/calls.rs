@@ -177,7 +177,73 @@ impl Interpreter {
                     }),
                 }
             }
+            "collect" => Ok(Some(Value::Integer(self.collect_garbage()))),
             _ => unreachable!("builtin `{callee}` is in the registry but has no interpreter arm"),
+        }
+    }
+
+    /// The teaching mark-and-sweep collector behind the `collect()` builtin.
+    ///
+    /// **Mark**: every binding in every live scope ([`Environment::iter_values`])
+    /// is a GC root; `mark_value` chases each root recursively — through array
+    /// elements, instance fields, and the heap slots that marked pointers refer
+    /// to (a heap slot can itself hold a pointer/array/instance, so reachability
+    /// cascades). **Sweep**: every still-allocated heap slot whose index was
+    /// never marked is freed exactly as `free` would (`None`), and the freed-slot
+    /// count is returned so programs can print what a collection reclaimed.
+    ///
+    /// Container values are tracked by `Rc` identity during the walk so a
+    /// self-referencing array/instance can't recurse forever.
+    fn collect_garbage(&mut self) -> i64 {
+        let mut marked: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut seen_containers: std::collections::HashSet<*const ()> =
+            std::collections::HashSet::new();
+        let roots: Vec<Value> = self.env.iter_values().cloned().collect();
+        for root in &roots {
+            self.mark_value(root, &mut marked, &mut seen_containers);
+        }
+        let mut freed = 0;
+        for (idx, slot) in self.heap.iter_mut().enumerate() {
+            if slot.is_some() && !marked.contains(&idx) {
+                *slot = None;
+                freed += 1;
+            }
+        }
+        freed
+    }
+
+    /// Marks every heap slot reachable from `value` (see [`Self::collect_garbage`]).
+    /// `marked` is the set of reachable heap indices; `seen` records visited
+    /// array/instance `Rc`s (by pointer identity) so cyclic structures terminate.
+    fn mark_value(
+        &self,
+        value: &Value,
+        marked: &mut std::collections::HashSet<usize>,
+        seen: &mut std::collections::HashSet<*const ()>,
+    ) {
+        match value {
+            Value::Pointer(idx) => {
+                if marked.insert(*idx) {
+                    if let Some(Some(pointee)) = self.heap.get(*idx) {
+                        self.mark_value(&pointee.clone(), marked, seen);
+                    }
+                }
+            }
+            Value::Array(elements) => {
+                if seen.insert(std::rc::Rc::as_ptr(elements) as *const ()) {
+                    for elem in elements.borrow().iter() {
+                        self.mark_value(elem, marked, seen);
+                    }
+                }
+            }
+            Value::Instance(fields, _) => {
+                if seen.insert(std::rc::Rc::as_ptr(fields) as *const ()) {
+                    for field in fields.borrow().values() {
+                        self.mark_value(field, marked, seen);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 

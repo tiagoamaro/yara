@@ -140,7 +140,7 @@ pub(super) fn check_call_args(
 /// Type-checks array and pointer builtins. Arity is checked once here from the
 /// registry; the per-builtin arms below can then trust args have exactly the
 /// right number of elements. Handles `len`/`push`/`get`/`set`/`pop` (array
-/// builtins) and `alloc`/`deref`/`set_deref`/`free` (pointer builtins).
+/// builtins), `alloc`/`deref`/`set_deref`/`free` (pointer builtins), and `collect` (GC).
 fn check_array_builtin(
     checker: &mut TypeChecker,
     callee: &str,
@@ -291,6 +291,8 @@ fn check_array_builtin(
                 }),
             }
         }
+        // Mark-and-sweep GC over the pointer heap; yields the freed-slot count.
+        "collect" => Ok(Some(Type::Integer)),
         _ => unreachable!("builtin `{callee}` is in the registry but has no typecheck arm"),
     }
 }
