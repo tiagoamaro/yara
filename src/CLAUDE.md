@@ -50,7 +50,8 @@ end-to-end `tests/` possible (a binary-only crate can't be `use`d from tests).
   needs the `Type` enum.
 
 - **`builtins.rs`** — registry of the array builtins (`len`/`push`/`get`/`set`/
-  `pop`) and pointer builtins (`alloc`/`deref`/`set_deref`/`free`) with each one's
+  `pop`), pointer builtins (`alloc`/`deref`/`set_deref`/`free`), and the GC
+  builtin (`collect`, arity 0) with each one's
   name + arity. Single source of truth for *which* names are builtins and their
   arity; the typechecker and interpreter each still implement the builtin's
   *behavior* in their own parallel `match` (shared metadata, separate logic —
