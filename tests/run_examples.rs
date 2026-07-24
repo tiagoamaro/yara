@@ -39,8 +39,9 @@ fn run_source(
     let program = Parser::new(tokens)
         .parse_program()
         .map_err(|e| (Stage::Parse, e.message))?;
-    let program =
-        resolver::resolve_imports(program, path).map_err(|e| (Stage::Import, e.message))?;
+    let mut map = yara::diagnostics::SourceMap::new(&path.display().to_string(), source);
+    let program = resolver::resolve_imports(program, path, &mut map)
+        .map_err(|e| (Stage::Import, e.message))?;
     TypeChecker::new()
         .check_program(&program)
         .map_err(|e| (Stage::Type, e.message))?;
@@ -118,6 +119,8 @@ fn every_error_example_fails_at_expected_stage() {
             "lex_error" => Stage::Lex,
             "parse_error" => Stage::Parse,
             "type_error"
+            | "import_type_error"
+            | "import_type_error_helper"
             | "undefined_variable"
             | "class_field_type_mismatch"
             | "class_unknown_field"
