@@ -1,0 +1,5 @@
+type error: cannot assign `String` to field `count` of type `Integer`
+  --> examples/errors/class_field_type_mismatch.yara:11:2
+   |
+11 | h.count = "oops"
+   |  ^

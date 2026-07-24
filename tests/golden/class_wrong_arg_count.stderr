@@ -1,0 +1,5 @@
+type error: `Hello.new` expects 1 argument(s), found 2
+  --> examples/errors/class_wrong_arg_count.yara:10:10
+   |
+10 | h = Hello.new(5, 6)
+   |          ^

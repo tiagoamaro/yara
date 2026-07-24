@@ -1,0 +1,5 @@
+type error: function `bad` declared to return `Integer`, but returns `String`
+  --> examples/errors/import_type_error_helper.yara:1:1
+  |
+1 | def bad(): Integer
+  | ^

@@ -1,0 +1,21 @@
+runtime error: division by zero
+  --> examples/errors/runtime_error_stack_trace.yara:5:7
+  |
+5 |     1 / n
+  |       ^
+  in `countdown` at examples/errors/runtime_error_stack_trace.yara:7:5
+  |
+7 |     countdown(n - 1)
+  |     ^
+  in `countdown` at examples/errors/runtime_error_stack_trace.yara:7:5
+  |
+7 |     countdown(n - 1)
+  |     ^
+  in `countdown` at examples/errors/runtime_error_stack_trace.yara:7:5
+  |
+7 |     countdown(n - 1)
+  |     ^
+  in `countdown` at examples/errors/runtime_error_stack_trace.yara:11:1
+   |
+11 | countdown(3)
+   | ^
