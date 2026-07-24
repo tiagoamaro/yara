@@ -3,7 +3,7 @@
 Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
 
 ## Status
-All fourteen verified against the actual binary (2026-07-24) after the pointer feature landed; output below is real, not illustrative.
+All fifteen verified against the actual binary (2026-07-24) after the pointer and nullable-pointer features landed; output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -125,6 +125,14 @@ All fourteen verified against the actual binary (2026-07-24) after the pointer f
     |
   4 | free(p)
     | ^
+  ```
+- `nil_pointer_deref.yara` — attempts to dereference a `nil` pointer (caught at runtime):
+  ```
+  runtime error: nil pointer dereference: `deref` on `nil`
+    --> examples/errors/nil_pointer_deref.yara:4:7
+    |
+  4 | print(deref(p))
+    |       ^
   ```
 
 ## Gotchas

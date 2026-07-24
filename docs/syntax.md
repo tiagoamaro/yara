@@ -101,13 +101,18 @@ print(deref(p))               # dereference: prints 5
 set_deref(p, 10)              # update the pointed-to value
 print(deref(p))               # prints 10
 free(p)                        # deallocate the slot
+
+q: Ptr<Integer> = nil         # nil is assignable to any Ptr<T>
+if p != nil                    # can compare pointers to nil with == / !=
+  print("p is not nil")
+end
 ```
 
-A pointer is declared with the `Ptr<T>` type annotation — `T` can be any base type or class. Five builtins manage pointers:
+A pointer is declared with the `Ptr<T>` type annotation — `T` can be any base type or class. Nil is a valid value of any `Ptr<T>` type. Five builtins manage pointers:
 - `alloc(value: T) -> Ptr<T>` — allocate a new slot on the heap, initialize it with `value`, return a pointer handle to that slot.
-- `deref(pointer: Ptr<T>) -> T` — read the value at the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free".
-- `set_deref(pointer: Ptr<T>, value: T) -> Nil` — write `value` to the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free".
-- `free(pointer: Ptr<T>) -> Nil` — deallocate the slot, marking it as no longer valid. If called twice on the same pointer, this is a runtime error: "double free". A freed slot's backing memory is never reused.
+- `deref(pointer: Ptr<T>) -> T` — read the value at the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free". If the pointer is `nil`, this is a runtime error: "nil pointer dereference: `deref` on `nil`".
+- `set_deref(pointer: Ptr<T>, value: T) -> Nil` — write `value` to the pointed-to slot. If the slot has been freed, this is a runtime error: "use after free". If the pointer is `nil`, this is a runtime error: "nil pointer dereference: `set_deref` on `nil`".
+- `free(pointer: Ptr<T>) -> Nil` — deallocate the slot, marking it as no longer valid. If called twice on the same pointer, this is a runtime error: "double free". If the pointer is `nil`, this is a runtime error: "cannot `free` a nil pointer". A freed slot's backing memory is never reused.
 - `collect() -> Integer` — run a mark-and-sweep garbage collection pass over the heap. Roots are all reachable pointers in every live scope, chased recursively through arrays, instances, and pointee slots. Unmarked slots are freed; returns the count of reclaimed slots.
 
 Pointers enable both explicit memory management (via `alloc`/`free`) and automatic collection (via `collect()`) — teaching two fundamental memory-management models. Mistakes in manual management are caught as visible runtime errors, not silent undefined behavior.

@@ -7,8 +7,8 @@ use std::fmt;
 
 mod calls;
 mod classes;
-mod exprs;
-mod stmts;
+mod expressions;
+mod statements;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -175,7 +175,7 @@ impl TypeChecker {
         calls::collect_function_signatures(self, program)?;
         classes::check_classes(self, program)?;
         for stmt in program {
-            stmts::check_stmt(self, stmt)?;
+            statements::check_stmt(self, stmt)?;
         }
         Ok(())
     }

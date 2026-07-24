@@ -218,8 +218,8 @@ impl Parser {
     }
 }
 
-mod exprs;
-mod stmts;
+mod expressions;
+mod statements;
 
 #[cfg(test)]
 mod tests {

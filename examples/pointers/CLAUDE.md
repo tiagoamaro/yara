@@ -23,6 +23,31 @@ instead, since everything here must pass `tests/run_examples.rs`.
   Still-reachable allocation survives the sweep:
   99
   ```
+- `linked_list.yara` — a `Node` class with `value: Integer` and `next: Ptr<Node>`
+  initialized to nil; demonstrates appending to the list and walking it to sum/print
+  values. Contrast with `examples/data_structures/linked_list.yara` (arena style).
+  Actual output:
+  ```
+  List contents:
+  10
+  20
+  30
+  Sum:
+  60
+  ```
+- `circular_list.yara` — a 3-node ring where each node's `next` pointer cycles back,
+  with the tail pointing to the head; a counter walks the ring for 7 steps, demonstrating
+  pointer-based circular structures. Actual output:
+  ```
+  Seven steps around the ring:
+  1
+  2
+  3
+  1
+  2
+  3
+  1
+  ```
 
 ## Gotchas
 

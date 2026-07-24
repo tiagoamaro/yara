@@ -57,7 +57,7 @@ pub(super) fn check_call(
 ) -> Result<Type, TypeError> {
     if callee == "print" {
         for a in args {
-            super::exprs::check_expr(checker, a)?;
+            super::expressions::check_expr(checker, a)?;
         }
         return Ok(Type::Nil);
     }
@@ -85,7 +85,7 @@ pub(super) fn check_call(
         });
     }
     for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
-        let arg_ty = super::exprs::check_expr(checker, arg)?;
+        let arg_ty = super::expressions::check_expr(checker, arg)?;
         if !super::assignable(expected, &arg_ty) {
             return Err(TypeError {
                 message: format!("argument to `{callee}` expects `{expected}`, found `{arg_ty}`"),
@@ -125,7 +125,7 @@ pub(super) fn check_call_args(
         });
     }
     for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
-        let arg_ty = super::exprs::check_expr(checker, arg)?;
+        let arg_ty = super::expressions::check_expr(checker, arg)?;
         if !super::assignable(expected, &arg_ty) {
             return Err(TypeError {
                 message: format!("argument to `{what}` expects `{expected}`, found `{arg_ty}`"),
@@ -165,7 +165,7 @@ fn check_array_builtin(
         });
     }
     match callee {
-        "len" => match super::exprs::check_expr(checker, &args[0])? {
+        "len" => match super::expressions::check_expr(checker, &args[0])? {
             Type::Array(_) => Ok(Some(Type::Integer)),
             other => Err(TypeError {
                 message: format!("`len` expects an array, found `{other}`"),
@@ -174,8 +174,8 @@ fn check_array_builtin(
             }),
         },
         "push" => {
-            let array_ty = super::exprs::check_expr(checker, &args[0])?;
-            let value_ty = super::exprs::check_expr(checker, &args[1])?;
+            let array_ty = super::expressions::check_expr(checker, &args[0])?;
+            let value_ty = super::expressions::check_expr(checker, &args[1])?;
             match array_ty {
                 Type::Array(elem) if *elem == value_ty => Ok(Some(Type::Nil)),
                 Type::Array(elem) => Err(TypeError {
@@ -193,8 +193,8 @@ fn check_array_builtin(
             }
         }
         "get" => {
-            let array_ty = super::exprs::check_expr(checker, &args[0])?;
-            let index_ty = super::exprs::check_expr(checker, &args[1])?;
+            let array_ty = super::expressions::check_expr(checker, &args[0])?;
+            let index_ty = super::expressions::check_expr(checker, &args[1])?;
             if index_ty != Type::Integer {
                 return Err(TypeError {
                     message: format!("`get` index must be Integer, found `{index_ty}`"),
@@ -212,9 +212,9 @@ fn check_array_builtin(
             }
         }
         "set" => {
-            let array_ty = super::exprs::check_expr(checker, &args[0])?;
-            let index_ty = super::exprs::check_expr(checker, &args[1])?;
-            let value_ty = super::exprs::check_expr(checker, &args[2])?;
+            let array_ty = super::expressions::check_expr(checker, &args[0])?;
+            let index_ty = super::expressions::check_expr(checker, &args[1])?;
+            let value_ty = super::expressions::check_expr(checker, &args[2])?;
             if index_ty != Type::Integer {
                 return Err(TypeError {
                     message: format!("`set` index must be Integer, found `{index_ty}`"),
@@ -238,7 +238,7 @@ fn check_array_builtin(
                 }),
             }
         }
-        "pop" => match super::exprs::check_expr(checker, &args[0])? {
+        "pop" => match super::expressions::check_expr(checker, &args[0])? {
             Type::Array(elem) => Ok(Some(*elem)),
             other => Err(TypeError {
                 message: format!("`pop` expects an array, found `{other}`"),
@@ -247,11 +247,11 @@ fn check_array_builtin(
             }),
         },
         "alloc" => {
-            let value_ty = super::exprs::check_expr(checker, &args[0])?;
+            let value_ty = super::expressions::check_expr(checker, &args[0])?;
             Ok(Some(Type::Pointer(Box::new(value_ty))))
         }
         "deref" => {
-            let ptr_ty = super::exprs::check_expr(checker, &args[0])?;
+            let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
             match ptr_ty {
                 Type::Pointer(elem) => Ok(Some(*elem)),
                 other => Err(TypeError {
@@ -262,8 +262,8 @@ fn check_array_builtin(
             }
         }
         "set_deref" => {
-            let ptr_ty = super::exprs::check_expr(checker, &args[0])?;
-            let value_ty = super::exprs::check_expr(checker, &args[1])?;
+            let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
+            let value_ty = super::expressions::check_expr(checker, &args[1])?;
             match ptr_ty {
                 Type::Pointer(elem) if super::assignable(&elem, &value_ty) => Ok(Some(Type::Nil)),
                 Type::Pointer(elem) => Err(TypeError {
@@ -281,7 +281,7 @@ fn check_array_builtin(
             }
         }
         "free" => {
-            let ptr_ty = super::exprs::check_expr(checker, &args[0])?;
+            let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
             match ptr_ty {
                 Type::Pointer(_) => Ok(Some(Type::Nil)),
                 other => Err(TypeError {

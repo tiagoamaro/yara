@@ -7,8 +7,8 @@ Implemented. `Parser::new(tokens).parse_program() -> Result<Vec<Stmt>, ParseErro
 
 ## Layout
 - **`mod.rs`** (535 lines) — module doc, imports, `ParseError` + `Diagnostic` impl, `Parser` struct + constructor + `parse_program()` + core token helpers (`peek`/`check`/`advance`/`expect`/`expect_ident`), `parse_type_annotation` (handles `Ptr<T>` syntax), `parse_block`, `parse_comma_separated`, and all unit tests.
-- **`stmts.rs`** (~290 lines) — statement parsing: `parse_stmt` (dispatcher), `parse_ident_stmt` (checkpoint/rewind disambiguator), `parse_import`, `parse_const_decl`, `parse_class`, `parse_function_def`, `parse_return`, `parse_if`, `parse_while`, `parse_for`, `parse_param`.
-- **`exprs.rs`** (~210 lines) — expression parsing via precedence climbing: `parse_expr`, `parse_comparison`, `parse_additive`, `parse_multiplicative`, `parse_unary`, `parse_primary`, `parse_postfix`, `parse_primary_base`.
+- **`statements.rs`** (~290 lines) — statement parsing: `parse_stmt` (dispatcher), `parse_ident_stmt` (checkpoint/rewind disambiguator), `parse_import`, `parse_const_decl`, `parse_class`, `parse_function_def`, `parse_return`, `parse_if`, `parse_while`, `parse_for`, `parse_param`.
+- **`expressions.rs`** (~210 lines) — expression parsing via precedence climbing: `parse_expr`, `parse_comparison`, `parse_additive`, `parse_multiplicative`, `parse_unary`, `parse_primary`, `parse_postfix`, `parse_primary_base`.
 
 ## Design
 - Precedence climbing via chained methods: `parse_comparison` -> `parse_additive` -> `parse_multiplicative` -> `parse_unary` -> `parse_primary`. `parse_unary` handles prefix `-` (`UnOp::Neg`), right-recursive so `--x` parses (typechecker/interpreter will happily double-negate).
