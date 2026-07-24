@@ -807,50 +807,7 @@ impl TypeChecker {
                 args,
                 line,
                 column,
-            } => {
-                if callee == "print" {
-                    for a in args {
-                        self.check_expr(a)?;
-                    }
-                    return Ok(Type::Nil);
-                }
-                if let Some(ty) = self.check_array_builtin(callee, args, *line, *column)? {
-                    return Ok(ty);
-                }
-                let sig = self
-                    .functions
-                    .get(callee)
-                    .cloned()
-                    .ok_or_else(|| TypeError {
-                        message: format!("undefined function `{callee}`"),
-                        line: *line,
-                        column: *column,
-                    })?;
-                if args.len() != sig.param_types.len() {
-                    return Err(TypeError {
-                        message: format!(
-                            "function `{callee}` expects {} argument(s), found {}",
-                            sig.param_types.len(),
-                            args.len()
-                        ),
-                        line: *line,
-                        column: *column,
-                    });
-                }
-                for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
-                    let arg_ty = self.check_expr(arg)?;
-                    if arg_ty != *expected {
-                        return Err(TypeError {
-                            message: format!(
-                                "argument to `{callee}` expects `{expected}`, found `{arg_ty}`"
-                            ),
-                            line: arg.line(),
-                            column: arg.column(),
-                        });
-                    }
-                }
-                Ok(sig.return_type.unwrap_or(Type::Nil))
-            }
+            } => self.check_call(callee, args, *line, *column),
             Expr::ArrayLit {
                 elements,
                 line,
@@ -1039,6 +996,63 @@ impl TypeChecker {
     /// Type-checks `len`/`push`/`get`/`set` if `callee` names one of them, returning
     /// `Ok(None)` for any other callee so the caller falls through to user-defined
     /// function lookup.
+    /// Type-checks a free function call `callee(args)`, resolving in order: the
+    /// `print` builtin (any args, yields `Nil`), the array builtins (via
+    /// `check_array_builtin`), then a user-defined function in `self.functions`
+    /// — checking argument count and each argument's type against the signature.
+    /// Yields the function's declared return type, or `Nil` if it declares none.
+    /// Split out of `check_expr`'s `Call` arm to keep that dispatch readable.
+    fn check_call(
+        &mut self,
+        callee: &str,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> Result<Type, TypeError> {
+        if callee == "print" {
+            for a in args {
+                self.check_expr(a)?;
+            }
+            return Ok(Type::Nil);
+        }
+        if let Some(ty) = self.check_array_builtin(callee, args, line, column)? {
+            return Ok(ty);
+        }
+        let sig = self
+            .functions
+            .get(callee)
+            .cloned()
+            .ok_or_else(|| TypeError {
+                message: format!("undefined function `{callee}`"),
+                line,
+                column,
+            })?;
+        if args.len() != sig.param_types.len() {
+            return Err(TypeError {
+                message: format!(
+                    "function `{callee}` expects {} argument(s), found {}",
+                    sig.param_types.len(),
+                    args.len()
+                ),
+                line,
+                column,
+            });
+        }
+        for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
+            let arg_ty = self.check_expr(arg)?;
+            if arg_ty != *expected {
+                return Err(TypeError {
+                    message: format!(
+                        "argument to `{callee}` expects `{expected}`, found `{arg_ty}`"
+                    ),
+                    line: arg.line(),
+                    column: arg.column(),
+                });
+            }
+        }
+        Ok(sig.return_type.unwrap_or(Type::Nil))
+    }
+
     fn check_array_builtin(
         &mut self,
         callee: &str,
