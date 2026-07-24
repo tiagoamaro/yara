@@ -3,6 +3,10 @@ name = "yara"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "yara"
+path = "src/lib.rs"
+
 [[bin]]
 name = "yara"
 path = "src/main.rs"

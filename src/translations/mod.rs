@@ -23,6 +23,21 @@ impl fmt::Display for TranslationError {
     }
 }
 
+impl crate::diagnostics::Diagnostic for TranslationError {
+    fn kind(&self) -> &str {
+        "keyword translation error"
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+    /// A translation error has a line but no meaningful column (it points at a
+    /// whole mapping line in the keyword file), so the caret sits at column 1 —
+    /// matching how the CLI rendered these before the `Diagnostic` unification.
+    fn span(&self) -> crate::diagnostics::Span {
+        crate::diagnostics::Span::new(self.line, 1)
+    }
+}
+
 /// Parses a translation file's contents into a keyword table ready for
 /// `Lexer::with_keywords`.
 ///

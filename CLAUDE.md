@@ -8,12 +8,15 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 
 - `src/lexer/` — tokenizer. See `src/lexer/CLAUDE.md`.
 - `src/ast/` — AST node definitions. See `src/ast/CLAUDE.md`.
+- `src/diagnostics/` — shared error presentation: the `Diagnostic` trait every stage's error type implements, a `Span`/`Frame` position type (with a `file` hook for the future imported-file fix), and `render`/`render_snippet` (rustc-style header + source line + `^` caret). See `src/diagnostics/CLAUDE.md`.
 - `src/parser/` — recursive-descent parser, tokens to AST. See `src/parser/CLAUDE.md`.
 - `src/typechecker/` — static type checking pass. See `src/typechecker/CLAUDE.md`.
 - `src/interpreter/` — tree-walk evaluator. See `src/interpreter/CLAUDE.md`.
 - `src/resolver/` — resolves `import "path"` statements before typechecking. See `src/resolver/CLAUDE.md`.
 - `src/translations/` — parses keyword-translation files (`if = se`) into the keyword table `lexer::Lexer::with_keywords` uses, powering `yara run <file> --keywords <path>`. See `src/translations/CLAUDE.md`.
-- `src/main.rs` — CLI entry (`yara run <file> [--keywords <path>]`) and error rendering (`print_error`/`render_snippet`): every lex/parse/import/type/runtime/translation error is printed rustc-style (file:line:col header, source line, `^` caret), with a snippet per call-stack frame for runtime errors.
+- `src/lib.rs` — the library crate root. Declares every compiler module (`pub mod ast/lexer/parser/resolver/typechecker/interpreter/translations`) so the whole pipeline is usable as a library and testable end to end. The `yara` binary is a thin wrapper over it. (Crate is both `[lib]` and `[[bin]]` in `Cargo.toml`.)
+- `src/main.rs` — thin CLI over the library crate (`use yara::…`): argument parsing (`yara run <file> [--keywords <path>]`) plus a `stage` helper that wraps each pipeline stage and, on error, defers to `diagnostics::render`. Every lex/parse/import/type/runtime/translation error is printed rustc-style (file:line:col header, source line, `^` caret), with a snippet per call-stack frame for runtime errors. No compilation logic lives here — it only drives the library stages and renders their errors.
+- `tests/` — end-to-end integration tests (`run_examples.rs`) driving the full public pipeline over every bundled example; the non-error examples must run clean and each `examples/errors/*` must fail at its expected stage. Only possible because the compiler is a library crate.
 - `translations/` — bundled keyword-translation files (currently `pt.keywords`, Portuguese). See `translations/CLAUDE.md`.
 - `examples/` — sample `.yara` programs. See `examples/CLAUDE.md`.
 - `docs/syntax.md` — grammar notes, updated as syntax stabilizes.
@@ -23,7 +26,7 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 ## Conventions
 
 - Every token/AST node carries `(line, column)` position — required for diagnostics, not optional.
-- Errors (lexer/parser/typechecker/runtime) must report exact line:column with a source excerpt + caret, rustc-style — delivered by `main.rs::print_error`, not by the individual compiler stages (they only carry line/column + message).
+- Errors (lexer/parser/resolver/typechecker/runtime/translation) must report exact line:column with a source excerpt + caret, rustc-style. Each stage keeps its own error type (locality) but implements `diagnostics::Diagnostic`; rendering is centralized in `diagnostics::render` (invoked by `main.rs`'s `stage` helper), not in the individual stages — they still only carry line/column + message (runtime additionally carries a call-stack trace).
 - Type aliases are interchangeable and normalized at lex/parse time: `Int`=`Integer`, `Bool`=`Boolean`, `Str`=`String`.
 - No implicit numeric coercion (Int vs Float stays strict).
 - Rust version pinned via `.tool-versions` (asdf).
@@ -32,7 +35,9 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 
 ## Status
 
-Milestones 1-6 done: lexer, AST, parser, typechecker, interpreter all implemented; `yara run <file>` works end to end. Since then: unary negation, `if`/`elsif`/`else` as a function's tail expression, file `import`, a minimal `Array` type (`IntArray`/`FloatArray`/`BoolArray`/`StringArray` with `[]` literals, `arr[i]` indexing, and `len`/`push`/`pop`/`get`/`set` builtins), a `class` feature (const/instance-var/initializer/method, `.new` construction, `.field` read/write, implicit-`self` name resolution, no inheritance), and configurable keyword translation (`yara run <file> --keywords <path>`, e.g. `translations/pt.keywords`) have all landed. 78 unit tests passing, `cargo fmt` clean. `examples/data_structures/` demonstrates list/stack/queue/linked-list/binary-tree/graph built on arrays; `examples/objects/` demonstrates classes; `examples/translations/` demonstrates keyword translation. Plan: `~/.claude/plans/cosmic-purring-stream.md`.
+Milestones 1-6 done: lexer, AST, parser, typechecker, interpreter all implemented; `yara run <file>` works end to end. Since then: unary negation, `if`/`elsif`/`else` as a function's tail expression, file `import`, a minimal `Array` type (`IntArray`/`FloatArray`/`BoolArray`/`StringArray` with `[]` literals, `arr[i]` indexing, and `len`/`push`/`pop`/`get`/`set` builtins), a `class` feature (const/instance-var/initializer/method, `.new` construction, `.field` read/write, implicit-`self` name resolution, no inheritance), and configurable keyword translation (`yara run <file> --keywords <path>`, e.g. `translations/pt.keywords`) have all landed. 78 unit tests + 2 end-to-end integration tests (`tests/run_examples.rs`) passing, `cargo fmt` clean. `examples/data_structures/` demonstrates list/stack/queue/linked-list/binary-tree/graph built on arrays; `examples/objects/` demonstrates classes; `examples/translations/` demonstrates keyword translation.
+
+**In-progress: modularization/isolation refactor** (behavior-preserving; plan at `~/.claude/plans/let-s-do-a-major-sharded-wadler.md`). Phase 0 done: the compiler is now a **library crate** (`src/lib.rs`) with a thin CLI binary (`src/main.rs`), unlocking the `tests/` integration net. Remaining phases: shared diagnostics (`Span`/`Diagnostic` trait), shared `Environment<T>` scope stack, single-source-of-truth tables (type names / keywords / builtin registry), god-function splitting, and a docs sync. Earlier plan: `~/.claude/plans/cosmic-purring-stream.md`.
 
 ## TODO
 

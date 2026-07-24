@@ -94,6 +94,31 @@ impl fmt::Display for RuntimeError {
     }
 }
 
+impl crate::diagnostics::Diagnostic for RuntimeError {
+    fn kind(&self) -> &str {
+        "runtime error"
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+    fn span(&self) -> crate::diagnostics::Span {
+        crate::diagnostics::Span::new(self.line, self.column)
+    }
+    /// The call stack is pushed outermost-first; the trace prints innermost
+    /// first, so reverse it here (same order the CLI produced before this trait
+    /// existed).
+    fn frames(&self) -> Vec<crate::diagnostics::Frame> {
+        self.call_stack
+            .iter()
+            .rev()
+            .map(|f| crate::diagnostics::Frame {
+                name: f.function_name.clone(),
+                span: crate::diagnostics::Span::new(f.line, f.column),
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FunctionDecl {
     params: Vec<String>,

@@ -23,6 +23,18 @@ impl fmt::Display for ResolveError {
     }
 }
 
+impl crate::diagnostics::Diagnostic for ResolveError {
+    fn kind(&self) -> &str {
+        "import error"
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+    fn span(&self) -> crate::diagnostics::Span {
+        crate::diagnostics::Span::new(self.line, self.column)
+    }
+}
+
 /// Public entry point: resolves all `import` statements in `program`
 /// (recursively), returning a single flat statement list with each
 /// `Stmt::Import` replaced by the imported file's own (recursively resolved)
