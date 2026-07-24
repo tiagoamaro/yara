@@ -1115,6 +1115,50 @@ mod tests {
         assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(120)));
     }
 
+    /// Runs `src` through the *typechecker and then* the interpreter. The
+    /// typechecker's tail-expression logic (`check_tail_stmt`) and the
+    /// interpreter's (`exec_tail_stmt`) must stay in lockstep — the docs warn
+    /// that if they diverge, return-value bugs slip past type checking. This
+    /// helper exercises both, so a divergence surfaces either as a type error
+    /// here or as a wrong computed value in the assertions below.
+    fn run_checked(src: &str) -> Interpreter {
+        let tokens = Lexer::new(src).tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        crate::typechecker::TypeChecker::new()
+            .check_program(&program)
+            .expect("program should type-check");
+        let mut interp = Interpreter::new();
+        interp.run_program(&program).expect("program should run");
+        interp
+    }
+
+    /// A trailing `if`/`elsif`/`else` used as a function's implicit return value
+    /// must type-check *and* evaluate to the same thing across every branch
+    /// shape: plain if/else, an `elsif` chain, a nested tail `if`, and recursion
+    /// through the tail. Guards the typechecker↔interpreter tail-expr agreement.
+    #[test]
+    fn tail_if_return_value_agrees_across_stages() {
+        let interp = run_checked(
+            "def pick(n: Int): Int\n  if n < 0\n    100\n  else\n    1\n  end\nend\nr = pick(-5)\n",
+        );
+        assert_eq!(interp.lookup_var("r"), Some(&Value::Integer(100)));
+
+        let interp = run_checked(
+            "def grade(n: Int): Int\n  if n < 1\n    0\n  elsif n < 2\n    1\n  else\n    2\n  end\nend\ng = grade(1)\n",
+        );
+        assert_eq!(interp.lookup_var("g"), Some(&Value::Integer(1)));
+
+        let interp = run_checked(
+            "def f(n: Int): Int\n  if n < 0\n    0\n  else\n    if n < 10\n      1\n    else\n      2\n    end\n  end\nend\nx = f(5)\n",
+        );
+        assert_eq!(interp.lookup_var("x"), Some(&Value::Integer(1)));
+
+        let interp = run_checked(
+            "def fact(n: Int): Int\n  if n <= 1\n    1\n  else\n    n * fact(n - 1)\n  end\nend\nf = fact(6)\n",
+        );
+        assert_eq!(interp.lookup_var("f"), Some(&Value::Integer(720)));
+    }
+
     #[test]
     fn array_index_and_builtins() {
         let interp = run(
