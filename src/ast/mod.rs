@@ -258,6 +258,68 @@ impl Expr {
         }
     }
 
+    /// Shifts this expression's source line (and every nested expression's)
+    /// by `offset`, leaving columns untouched.
+    ///
+    /// Used by the resolver when splicing an imported file's statements into
+    /// the entry program: each imported file is assigned its own disjoint
+    /// range in a single "virtual line space" (see `diagnostics::SourceMap`),
+    /// so a later diagnostic can be mapped back to the exact file *and* local
+    /// line it came from without every node having to carry a file path.
+    pub fn shift_lines(&mut self, offset: usize) {
+        match self {
+            Expr::IntLit { line, .. }
+            | Expr::FloatLit { line, .. }
+            | Expr::StringLit { line, .. }
+            | Expr::BoolLit { line, .. }
+            | Expr::NilLit { line, .. }
+            | Expr::Ident { line, .. } => *line += offset,
+            Expr::Binary {
+                left, right, line, ..
+            } => {
+                *line += offset;
+                left.shift_lines(offset);
+                right.shift_lines(offset);
+            }
+            Expr::Call { args, line, .. } => {
+                *line += offset;
+                for arg in args {
+                    arg.shift_lines(offset);
+                }
+            }
+            Expr::Unary { expr, line, .. } => {
+                *line += offset;
+                expr.shift_lines(offset);
+            }
+            Expr::ArrayLit { elements, line, .. } => {
+                *line += offset;
+                for elem in elements {
+                    elem.shift_lines(offset);
+                }
+            }
+            Expr::Index {
+                array, index, line, ..
+            } => {
+                *line += offset;
+                array.shift_lines(offset);
+                index.shift_lines(offset);
+            }
+            Expr::FieldAccess { object, line, .. } => {
+                *line += offset;
+                object.shift_lines(offset);
+            }
+            Expr::MethodCall {
+                object, args, line, ..
+            } => {
+                *line += offset;
+                object.shift_lines(offset);
+                for arg in args {
+                    arg.shift_lines(offset);
+                }
+            }
+        }
+    }
+
     /// Returns the source column this expression started on.
     ///
     /// Same rationale as [`Expr::line`]: dispatches across every variant to
@@ -518,6 +580,140 @@ impl Stmt {
             | Stmt::ClassDef { line, .. }
             | Stmt::FieldAssign { line, .. } => *line,
             Stmt::ExprStmt(expr) => expr.line(),
+        }
+    }
+
+    /// Shifts this statement's source line — and, recursively, every nested
+    /// statement's, expression's, parameter's, field's, and type
+    /// annotation's — by `offset`, leaving columns untouched. See
+    /// [`Expr::shift_lines`] for why (the resolver's virtual line space).
+    pub fn shift_lines(&mut self, offset: usize) {
+        match self {
+            Stmt::VarDecl {
+                type_ann,
+                value,
+                line,
+                ..
+            }
+            | Stmt::ConstDecl {
+                type_ann,
+                value,
+                line,
+                ..
+            } => {
+                *line += offset;
+                if let Some(ann) = type_ann {
+                    ann.line += offset;
+                }
+                value.shift_lines(offset);
+            }
+            Stmt::FunctionDef {
+                params,
+                return_type,
+                body,
+                line,
+                ..
+            } => {
+                *line += offset;
+                for param in params {
+                    param.line += offset;
+                    param.type_ann.line += offset;
+                }
+                if let Some(ret) = return_type {
+                    ret.line += offset;
+                }
+                for stmt in body {
+                    stmt.shift_lines(offset);
+                }
+            }
+            Stmt::Return { value, line, .. } => {
+                *line += offset;
+                if let Some(expr) = value {
+                    expr.shift_lines(offset);
+                }
+            }
+            Stmt::If {
+                condition,
+                then_body,
+                elsif_branches,
+                else_body,
+                line,
+                ..
+            } => {
+                *line += offset;
+                condition.shift_lines(offset);
+                for stmt in then_body {
+                    stmt.shift_lines(offset);
+                }
+                for (cond, body) in elsif_branches {
+                    cond.shift_lines(offset);
+                    for stmt in body {
+                        stmt.shift_lines(offset);
+                    }
+                }
+                if let Some(body) = else_body {
+                    for stmt in body {
+                        stmt.shift_lines(offset);
+                    }
+                }
+            }
+            Stmt::While {
+                condition,
+                body,
+                line,
+                ..
+            } => {
+                *line += offset;
+                condition.shift_lines(offset);
+                for stmt in body {
+                    stmt.shift_lines(offset);
+                }
+            }
+            Stmt::For {
+                range_start,
+                range_end,
+                body,
+                line,
+                ..
+            } => {
+                *line += offset;
+                range_start.shift_lines(offset);
+                range_end.shift_lines(offset);
+                for stmt in body {
+                    stmt.shift_lines(offset);
+                }
+            }
+            Stmt::ExprStmt(expr) => expr.shift_lines(offset),
+            Stmt::Import { line, .. } => *line += offset,
+            Stmt::ClassDef {
+                consts,
+                fields,
+                methods,
+                line,
+                ..
+            } => {
+                *line += offset;
+                for stmt in consts {
+                    stmt.shift_lines(offset);
+                }
+                for field in fields {
+                    field.line += offset;
+                    field.type_ann.line += offset;
+                }
+                for stmt in methods {
+                    stmt.shift_lines(offset);
+                }
+            }
+            Stmt::FieldAssign {
+                object,
+                value,
+                line,
+                ..
+            } => {
+                *line += offset;
+                object.shift_lines(offset);
+                value.shift_lines(offset);
+            }
         }
     }
 
