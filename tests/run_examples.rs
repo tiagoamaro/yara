@@ -6,10 +6,11 @@
 //! surfaces as an ordinary failed assertion instead of a CLI process exit. Only
 //! reachable at all because the compiler is now a library crate (`src/lib.rs`).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use yara::interpreter::Interpreter;
-use yara::lexer::{self, Lexer};
+use yara::lexer::{self, KeywordToken, Lexer};
 use yara::parser::Parser;
 use yara::typechecker::TypeChecker;
 use yara::{resolver, translations};
@@ -24,23 +25,15 @@ enum Stage {
     Runtime,
 }
 
-/// Runs the full pipeline on `path`, returning the stage that failed (with its
-/// message) or `Ok(())` if the program ran to completion. Mirrors
-/// `main.rs::run_file`'s stage order, minus the CLI's error rendering and exit.
-fn run_pipeline(path: &Path) -> Result<(), (Stage, String)> {
-    let source = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-
-    // The translated example needs its Portuguese keyword table; every other
-    // example uses the default English keywords.
-    let keywords = if path.starts_with("examples/translations") {
-        let kw = std::fs::read_to_string("translations/pt.keywords").unwrap();
-        translations::parse_keyword_file(&kw).expect("bundled pt.keywords must parse")
-    } else {
-        lexer::default_keywords()
-    };
-
-    let tokens = Lexer::with_keywords(&source, keywords)
+/// Runs `source` through the full pipeline (lexer -> parser -> resolver ->
+/// typechecker -> interpreter), returning the stage that failed with its
+/// message or `Ok(())`. `path` is used only for relative `import` resolution.
+fn run_source(
+    source: &str,
+    path: &Path,
+    keywords: HashMap<String, KeywordToken>,
+) -> Result<(), (Stage, String)> {
+    let tokens = Lexer::with_keywords(source, keywords)
         .tokenize()
         .map_err(|e| (Stage::Lex, e.message))?;
     let program = Parser::new(tokens)
@@ -55,6 +48,25 @@ fn run_pipeline(path: &Path) -> Result<(), (Stage, String)> {
         .run_program(&program)
         .map_err(|e| (Stage::Runtime, e.message))?;
     Ok(())
+}
+
+/// Runs the file at `path` through [`run_source`], reading its source and
+/// choosing its keyword table. Mirrors `main.rs::run_file`'s stage order, minus
+/// the CLI's error rendering and exit.
+fn run_pipeline(path: &Path) -> Result<(), (Stage, String)> {
+    let source = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+
+    // The translated example needs its Portuguese keyword table; every other
+    // example uses the default English keywords.
+    let keywords = if path.starts_with("examples/translations") {
+        let kw = std::fs::read_to_string("translations/pt.keywords").unwrap();
+        translations::parse_keyword_file(&kw).expect("bundled pt.keywords must parse")
+    } else {
+        lexer::default_keywords()
+    };
+
+    run_source(&source, path, keywords)
 }
 
 /// Recursively collects every `.yara` file under `dir`.
@@ -130,6 +142,38 @@ fn every_error_example_fails_at_expected_stage() {
                 "wrong failing stage for {}",
                 path.display()
             ),
+        }
+    }
+}
+
+/// Every builtin in the `builtins` registry must be wired into *both* stages: a
+/// valid call to it should type-check and run without landing on "undefined
+/// function". Guards against adding a `BUILTINS` entry (or a typecheck/execute
+/// arm) without the matching arm in the other stage. A new builtin forces a new
+/// probe snippet here, which by construction exercises both stages.
+#[test]
+fn every_builtin_is_handled_by_both_stages() {
+    fn probe(name: &str) -> &'static str {
+        match name {
+            "len" => "xs: IntArray = [1]\nn: Integer = len(xs)\n",
+            "push" => "xs: IntArray = [1]\npush(xs, 2)\n",
+            "get" => "xs: IntArray = [1]\nx: Integer = get(xs, 0)\n",
+            "set" => "xs: IntArray = [1]\nset(xs, 0, 9)\n",
+            "pop" => "xs: IntArray = [1]\ny: Integer = pop(xs)\n",
+            other => {
+                panic!("no probe snippet for builtin `{other}` — add one so this test covers it")
+            }
+        }
+    }
+
+    for builtin in yara::builtins::BUILTINS {
+        let path = Path::new("examples/_builtin_probe.yara");
+        if let Err((stage, msg)) = run_source(probe(builtin.name), path, lexer::default_keywords())
+        {
+            panic!(
+                "builtin `{}` is not handled at {stage:?}: {msg}",
+                builtin.name
+            );
         }
     }
 }
