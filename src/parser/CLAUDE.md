@@ -5,6 +5,11 @@ Recursive-descent parser turning lexer tokens into `ast::` nodes.
 ## Status
 Implemented. `Parser::new(tokens).parse_program() -> Result<Vec<Stmt>, ParseError>`.
 
+## Layout
+- **`mod.rs`** (~280 lines) — module doc, imports, `ParseError` + `Diagnostic` impl, `Parser` struct + constructor + `parse_program()` + core token helpers (`peek`/`check`/`advance`/`expect`/`expect_ident`), `parse_type_annotation`, `parse_block`, `parse_comma_separated`, and all unit tests.
+- **`stmts.rs`** (~290 lines) — statement parsing: `parse_stmt` (dispatcher), `parse_ident_stmt` (checkpoint/rewind disambiguator), `parse_import`, `parse_const_decl`, `parse_class`, `parse_function_def`, `parse_return`, `parse_if`, `parse_while`, `parse_for`, `parse_param`.
+- **`exprs.rs`** (~210 lines) — expression parsing via precedence climbing: `parse_expr`, `parse_comparison`, `parse_additive`, `parse_multiplicative`, `parse_unary`, `parse_primary`, `parse_postfix`, `parse_primary_base`.
+
 ## Design
 - Precedence climbing via chained methods: `parse_comparison` -> `parse_additive` -> `parse_multiplicative` -> `parse_unary` -> `parse_primary`. `parse_unary` handles prefix `-` (`UnOp::Neg`), right-recursive so `--x` parses (typechecker/interpreter will happily double-negate).
 - `import "path"` parsed by `parse_import`: keyword then a required string-literal token, no `end`. See `resolver` for what actually happens with it.

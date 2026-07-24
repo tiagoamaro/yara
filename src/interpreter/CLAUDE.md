@@ -5,6 +5,14 @@ Tree-walk evaluator executing a typechecked AST.
 ## Status
 Implemented. `Interpreter::new().run_program(&[Stmt]) -> Result<(), RuntimeError>`. Wired into `main.rs` (`yara run <file>` executes lexer to parser to typechecker to interpreter in sequence, bailing with the first error).
 
+## Layout
+Split into submodules for cohesive organization (behavior-preserving refactor):
+- **`mod.rs`** (527 lines) — module doc, `Value` enum + Display, `RuntimeError` + Diagnostic impl, `StackFrame`, `FunctionDecl`, `ClassDecl`, `Flow`, `Interpreter` struct, `new()`/`run_program()`, scope helpers (declare_var/set_var/lookup_var/push_scope/pop_scope), submodule declarations, and unit tests.
+- **`exprs.rs`** (269 lines) — expression evaluation: `eval_expr`, `eval_bool`, `eval_int`, `array_get`, `eval_binary_op`.
+- **`stmts.rs`** (195 lines) — statement execution and control flow: `exec_stmt`, `exec_block`, `exec_function_body`, `exec_tail_stmt`.
+- **`calls.rs`** (149 lines) — function calls and builtins: `call_function`, `call_array_builtin`.
+- **`classes.rs`** (141 lines) — class/instance handling: `construct`, `call_method`, `run_method`.
+
 ## Design
 - `Value` enum: `Integer, Float, Boolean, String, Nil, Array(Rc<RefCell<Vec<Value>>>), Instance(Rc<RefCell<HashMap<String, Value>>>, String)` — runtime counterpart of `typechecker::Type`, but this crate stays decoupled from that module (no shared type).
 - **Classes**: `ClassDecl { const_inits: Vec<(String, Expr)>, field_names: Vec<String>, methods: HashMap<String, FunctionDecl> }` per class, collected in `run_program` alongside top-level function collection. `Value::Instance` uses the same `Rc<RefCell<..>>` reference-semantics trick as `Value::Array` — a field map shared between every binding of the same instance, so `alias.count = 42` after `alias = h` mutates `h.count` too.
