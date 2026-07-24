@@ -1,0 +1,5 @@
+runtime error: array index 10 out of bounds (length 3)
+  --> examples/errors/array_out_of_bounds.yara:3:9
+  |
+3 | print(xs[10])
+  |         ^

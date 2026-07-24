@@ -1,0 +1,5 @@
+type error: cannot apply `+` to `Integer` and `Float`
+  --> examples/errors/type_error.yara:4:7
+  |
+4 | z = x + y
+  |       ^

@@ -1,0 +1,5 @@
+type error: class `Hello` has no field `missing`
+  --> examples/errors/class_unknown_field.yara:11:8
+   |
+11 | print(h.missing)
+   |        ^

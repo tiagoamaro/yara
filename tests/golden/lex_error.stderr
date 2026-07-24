@@ -1,0 +1,5 @@
+lex error: unexpected character `@`
+  --> examples/errors/lex_error.yara:2:7
+  |
+2 | x = 5 @ 3
+  |       ^

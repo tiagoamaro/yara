@@ -1,0 +1,2 @@
+parse error: unexpected end of input, expected `end`
+  --> examples/errors/parse_error.yara:4:1
