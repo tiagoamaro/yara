@@ -179,6 +179,18 @@ impl TypeChecker {
         if self.classes.contains_key(name) {
             return Ok(Type::Instance(name.to_string()));
         }
+        // Decode `Ptr<T>` here (not only in `from_annotation_name`) so the
+        // inner name is resolved with the class table in reach — that's what
+        // makes `Ptr<Node>` (a pointer to a class instance, the building
+        // block of pointer-based data structures) a legal annotation.
+        if let Some(inner_name) = name
+            .strip_prefix("Ptr<")
+            .and_then(|rest| rest.strip_suffix('>'))
+        {
+            return self
+                .resolve_type(inner_name, line, column)
+                .map(|inner| Type::Pointer(Box::new(inner)));
+        }
         Type::from_annotation_name(name).ok_or_else(|| TypeError {
             message: format!("unknown type `{name}`"),
             line,
@@ -435,6 +447,23 @@ mod tests {
     fn pointer_declared_vs_actual_mismatch() {
         let err = check("p: Ptr<Float> = alloc(5)").unwrap_err();
         assert!(err.message.contains("type mismatch"));
+    }
+
+    /// `Ptr<Node>` where `Node` is a user class must resolve (pointer to an
+    /// instance), including alloc/deref round-tripping the instance type.
+    #[test]
+    fn pointer_to_class_instance_resolves() {
+        assert!(check(
+            "class Node\n  value: Integer\n\n  def initializer(v: Integer)\n    value = v\n  end\nend\nn: Node = Node.new(7)\np: Ptr<Node> = alloc(n)\nm: Node = deref(p)"
+        )
+        .is_ok());
+    }
+
+    /// A `Ptr<...>` wrapping an unknown inner name is still an error.
+    #[test]
+    fn pointer_to_unknown_type_is_error() {
+        let err = check("p: Ptr<Mystery> = alloc(1)").unwrap_err();
+        assert!(err.message.contains("unknown type `Mystery`"));
     }
 
     #[test]
