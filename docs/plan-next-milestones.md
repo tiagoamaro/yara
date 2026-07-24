@@ -15,6 +15,8 @@ Done and committed, suite green (94 unit + 4 integration, fmt clean):
 3. **Structure item 3** — unify builtin check/eval behavior behind one table (best right after 3a adds more builtins).
 4. **Phase 4** — class inheritance (re-scope first).
 5. Structure item 5 (uniform `Span` in error types) — opportunistic.
+6. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed; slot after Phase 3b or later.
+7. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
 Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.
