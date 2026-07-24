@@ -2,21 +2,21 @@
 
 ## Progress (updated 2026-07-24, session paused here)
 
-Done and committed, suite green (94 unit + 4 integration, fmt clean):
+Done and committed, suite green (105 unit + 4 integration, fmt clean):
 - **Phase 1** — imported-file snippet fix (`diagnostics::SourceMap` virtual lines).
 - **Structure item 2** — golden error-output tests (`tests/error_output.rs` + `tests/golden/`).
 - **Phase 2** — definite-assignment check for class fields.
 - **Structure item 4** — CI workflow (`.github/workflows/ci.yml`, fmt + test, Rust 1.97.1).
 - **Structure item 1** — parser/typechecker/interpreter split into submodules (exprs/stmts + calls/classes), mod.rs keeps public types + dispatch; done via Haiku sub-agents, doc comments verified restored (213 in parser).
+- **Phase 3a** — `Ptr<T>` + interpreter heap + `alloc`/`deref`/`set_deref`/`free`; use-after-free and double-free are runtime errors; `examples/pointers/` + error examples with goldens.
 
 **Next up (in order):**
-1. **Phase 3a** — `Ptr<T>` + interpreter heap + `alloc`/`deref`/`set_deref`/`free` (details below). Nothing started.
-2. **Phase 3b** — mark-and-sweep `collect()` builtin + manual-vs-GC examples.
-3. **Structure item 3** — unify builtin check/eval behavior behind one table (best right after 3a adds more builtins).
-4. **Phase 4** — class inheritance (re-scope first).
-5. Structure item 5 (uniform `Span` in error types) — opportunistic.
-6. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed; slot after Phase 3b or later.
-7. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
+1. **Phase 3b** — mark-and-sweep `collect()` builtin + manual-vs-GC examples.
+2. **Structure item 3** — unify builtin check/eval behavior behind one table (best right after 3a adds more builtins).
+3. **Phase 4** — class inheritance (re-scope first).
+4. Structure item 5 (uniform `Span` in error types) — opportunistic.
+5. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed; slot after Phase 3b or later.
+6. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
 Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.
@@ -60,6 +60,9 @@ Agent split: one typechecker agent, one test/example agent, one docs agent.
 Per TODO sketch. Sub-phases, each independently green:
 
 ### 3a. `Ptr<T>` type + heap + `alloc`/`deref`/`free`
+
+**Done** (2026-07-24).
+
 - `src/types.rs`/`src/ast/` — `Type::Pointer(Box<Type>)`, parse `Ptr<T>` (first generic-ish type syntax; parser needs `<`/`>` in type position).
 - `src/builtins.rs` — register `alloc` (arity 1), `deref` (1), `free` (1).
 - `src/typechecker/` — `alloc(x: T) -> Ptr<T>`, `deref(p: Ptr<T>) -> T`, `free(p: Ptr<T>) -> Nil` (or unit-like).

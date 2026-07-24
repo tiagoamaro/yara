@@ -66,7 +66,7 @@
     },
     "types": {
       "comment": "Matches lexer::normalize_type_alias's short/long pairs plus the concrete array type names (see typechecker::Type::from_annotation_name) — a capitalized identifier that isn't one of these is still heuristically a class name used as a type, but that can't be distinguished from a class-name expression by regex alone, so it's left as a plain identifier here.",
-      "match": "\\b(Int|Integer|Float|Bool|Boolean|Str|String|Nil|IntArray|FloatArray|BoolArray|StringArray)\\b",
+      "match": "\\b(Int|Integer|Float|Bool|Boolean|Str|String|Nil|IntArray|FloatArray|BoolArray|StringArray|Ptr)\\b",
       "name": "support.type.yara"
     },
     "dotted-access": {

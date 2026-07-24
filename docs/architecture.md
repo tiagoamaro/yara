@@ -68,6 +68,8 @@ Loosest-binding (comparison) is outermost, tightest-binding (postfix indexing/fi
 
 `parse_ident_stmt` disambiguates four statement shapes that all start with a bare identifier — `x = expr`, `x: Type = expr`, `obj.field = value`, and a bare expression statement like `foo()` — by parsing a full expression first and then pattern-matching on what shape it turned out to be (`Expr::Ident` -> `Stmt::VarDecl`, `Expr::FieldAccess` -> `Stmt::FieldAssign`, anything else -> `Stmt::ExprStmt`).
 
+Type annotations in declarations are parsed by `parse_type_annotation`, which is **recursive**: it recognizes the `Ptr<T>` prefix and recursively parses the inner type, building a tree for complex types like `Ptr<Ptr<Integer>>`. This is the only place in the grammar that accepts generic-like syntax.
+
 ## Typechecker: two collection passes, then check
 
 ```mermaid
@@ -82,6 +84,8 @@ flowchart TD
 The two-pass class collection matters for a subtle reason: a class's field/param/return annotations might name *another* class (or itself), so every class name has to exist in `self.classes` before any class's fields are actually type-resolved — otherwise declaration order would matter, which would be surprising.
 
 `check_body_return_type`/`check_tail_stmt` implement Ruby-style implicit last-expression return, including the trickiest part: a trailing `if`/`elsif`/`else` is itself a tail expression, so `factorial`'s whole body (an `if`/`else` with no statement after it) can be its return value — each branch's own tail type is computed recursively and all branches present must agree.
+
+Pointer types (`Type::Pointer`) are built by recursively resolving the inner type from the `Ptr<T>` annotation syntax. The typechecker verifies that `alloc`, `deref`, `set_deref`, and `free` receive the correct argument types and return types — e.g., `deref(p: Ptr<T>)` type-checks only if `p` is indeed a pointer, and returns type `T`.
 
 ## Interpreter: tree-walking, no bytecode
 
@@ -103,6 +107,8 @@ flowchart TD
 Arrays (`Value::Array`) and class instances (`Value::Instance`) both use `Rc<RefCell<..>>` for reference semantics — cloning the `Value` (e.g. passing it as a function argument) shares the same backing storage, so a called function's `push`/`set`/field-assignment is visible to the caller. This is what makes the arena-style data structures in `examples/data_structures/` work without a real pointer type, and what makes `h.count = 10` after `Hello.new(...)` actually mutate the instance.
 
 Class method calls (`run_method`) use a copy-in/copy-out trick for implicit `self`: the instance's current field values are copied into the method's own scope before the body runs (so a bare `count` reads/writes like any local variable), then the same keys are copied back into the instance's shared field map afterward.
+
+**Heap and pointer semantics:** The interpreter maintains a heap (`Vec<Option<Value>>`) where each index is a potential storage slot. `alloc(v)` finds an unused slot, writes `Some(v)` into it, and returns `Value::Pointer(index)` — a handle to that slot. `deref(p)` reads the slot; if it contains `None` (previously freed), a `RuntimeError("use after free")` is raised. `set_deref(p, v)` writes to the slot, with the same freed-slot check. `free(p)` writes `None` to the slot; calling `free` twice on the same pointer raises `RuntimeError("double free")`. Slots are never reused after being freed — each allocation claims an ever-increasing index — making use-after-free and double-free mistakes visible and diagnosable, the pedagogical point for teaching manual memory management.
 
 ## Where to read next
 

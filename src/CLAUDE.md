@@ -50,13 +50,13 @@ end-to-end `tests/` possible (a binary-only crate can't be `use`d from tests).
   needs the `Type` enum.
 
 - **`builtins.rs`** — registry of the array builtins (`len`/`push`/`get`/`set`/
-  `pop`) with each one's name + arity. Single source of truth for *which* names
-  are builtins and their arity; the typechecker and interpreter each still
-  implement the builtin's *behavior* in their own parallel `match` (shared
-  metadata, separate logic — the deliberate teaching split). `print` is a
-  separate variadic path and is intentionally not in the registry. An integration
-  test (`tests/run_examples.rs`) asserts every registry entry is wired into both
-  stages.
+  `pop`) and pointer builtins (`alloc`/`deref`/`set_deref`/`free`) with each one's
+  name + arity. Single source of truth for *which* names are builtins and their
+  arity; the typechecker and interpreter each still implement the builtin's
+  *behavior* in their own parallel `match` (shared metadata, separate logic —
+  the deliberate teaching split). `print` is a separate variadic path and is
+  intentionally not in the registry. An integration test (`tests/run_examples.rs`)
+  asserts every registry entry is wired into both stages.
 
 ## Conventions
 

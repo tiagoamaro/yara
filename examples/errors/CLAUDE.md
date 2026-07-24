@@ -3,7 +3,7 @@
 Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
 
 ## Status
-All twelve verified against the actual binary (2026-07-24) after the imported-file snippet fix and definite-assignment soundness fix landed; output below is real, not illustrative.
+All fourteen verified against the actual binary (2026-07-24) after the pointer feature landed; output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -109,6 +109,22 @@ All twelve verified against the actual binary (2026-07-24) after the imported-fi
     |
   2 |   count: Integer
     |   ^
+  ```
+- `use_after_free.yara` — attempts to dereference a pointer after it has been freed (caught at runtime):
+  ```
+  runtime error: use after free: pointer ptr#0 was already freed
+    --> examples/errors/use_after_free.yara:4:7
+    |
+  4 | print(deref(p))
+    |       ^
+  ```
+- `double_free.yara` — attempts to free a pointer that was already freed (caught at runtime):
+  ```
+  runtime error: double free: pointer ptr#0 was already freed
+    --> examples/errors/double_free.yara:4:1
+    |
+  4 | free(p)
+    | ^
   ```
 
 ## Gotchas
