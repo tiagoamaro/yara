@@ -1,4 +1,5 @@
-//! Registry of Yara's array builtins (`len`, `push`, `get`, `set`, `pop`).
+//! Registry of Yara's builtins: array operations (`len`, `push`, `get`, `set`, `pop`)
+//! and pointer operations (`alloc`, `deref`, `set_deref`, `free`).
 //!
 //! These aren't user-defined functions and aren't in any `functions` table;
 //! they're recognized ad hoc by name in both the typechecker (which type-checks
@@ -7,29 +8,29 @@
 //! `match`es, so adding a builtin meant editing arity numbers in two places and
 //! risking them drifting apart.
 //!
-//! This module is the single source of truth for *which* names are array
-//! builtins and *how many* arguments each takes. Each stage still owns its own
+//! This module is the single source of truth for *which* names are builtins
+//! and *how many* arguments each takes. Each stage still owns its own
 //! *behavior* — the typechecker's type rules and the interpreter's execution
 //! are deliberately kept as separate parallel `match`es, not unified, so each
 //! stage reads as its own straightforward walk.
 //!
 //! `print` is intentionally not here: it's a variadic I/O builtin handled on a
-//! different code path in each stage, not an array operation with a fixed arity.
+//! different code path in each stage, not a fixed-arity builtin operation.
 
-/// One array builtin's name and its exact argument count.
+/// One builtin's name and its exact argument count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Builtin {
-    /// The name it's called by in source (e.g. `push`).
+    /// The name it's called by in source (e.g. `push` or `alloc`).
     pub name: &'static str,
     /// Exact number of arguments (the typechecker enforces this; the
     /// interpreter then trusts it and indexes the args directly).
     pub arity: usize,
 }
 
-/// Every array builtin. Adding one here is step one; the second and third steps
-/// are a type-checking arm in `typechecker::check_array_builtin` and an
-/// execution arm in `interpreter::call_array_builtin` (the
-/// `every_builtin_is_handled_by_both_stages` integration test enforces both).
+/// Every builtin. Adding one here is step one; the second and third steps
+/// are a type-checking arm in the typechecker and an execution arm in the
+/// interpreter (the `every_builtin_is_handled_by_both_stages` integration test
+/// enforces both).
 pub const BUILTINS: &[Builtin] = &[
     Builtin {
         name: "len",
@@ -49,6 +50,22 @@ pub const BUILTINS: &[Builtin] = &[
     },
     Builtin {
         name: "pop",
+        arity: 1,
+    },
+    Builtin {
+        name: "alloc",
+        arity: 1,
+    },
+    Builtin {
+        name: "deref",
+        arity: 1,
+    },
+    Builtin {
+        name: "set_deref",
+        arity: 2,
+    },
+    Builtin {
+        name: "free",
         arity: 1,
     },
 ];
@@ -75,6 +92,7 @@ mod tests {
     #[test]
     fn lookup_finds_known_and_misses_unknown() {
         assert_eq!(lookup("push").map(|b| b.arity), Some(2));
+        assert_eq!(lookup("set_deref").map(|b| b.arity), Some(2));
         assert!(lookup("print").is_none());
         assert!(lookup("nope").is_none());
     }

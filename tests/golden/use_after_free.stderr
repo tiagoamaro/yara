@@ -1,0 +1,5 @@
+runtime error: use after free: pointer ptr#0 was already freed
+  --> examples/errors/use_after_free.yara:4:7
+  |
+4 | print(deref(p))
+  |       ^

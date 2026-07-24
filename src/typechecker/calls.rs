@@ -39,11 +39,11 @@ pub(super) fn collect_function_signatures(
     Ok(())
 }
 
-/// Type-checks `len`/`push`/`get`/`set` if `callee` names one of them, returning
+/// Type-checks array and pointer builtins if `callee` names one of them, returning
 /// `Ok(None)` for any other callee so the caller falls through to user-defined
 /// function lookup.
 /// Type-checks a free function call `callee(args)`, resolving in order: the
-/// `print` builtin (any args, yields `Nil`), the array builtins (via
+/// `print` builtin (any args, yields `Nil`), the array/pointer builtins (via
 /// `check_array_builtin`), then a user-defined function in `self.functions`
 /// — checking argument count and each argument's type against the signature.
 /// Yields the function's declared return type, or `Nil` if it declares none.
@@ -137,6 +137,10 @@ pub(super) fn check_call_args(
     Ok(())
 }
 
+/// Type-checks array and pointer builtins. Arity is checked once here from the
+/// registry; the per-builtin arms below can then trust args have exactly the
+/// right number of elements. Handles `len`/`push`/`get`/`set`/`pop` (array
+/// builtins) and `alloc`/`deref`/`set_deref`/`free` (pointer builtins).
 fn check_array_builtin(
     checker: &mut TypeChecker,
     callee: &str,
@@ -242,6 +246,51 @@ fn check_array_builtin(
                 column,
             }),
         },
+        "alloc" => {
+            let value_ty = super::exprs::check_expr(checker, &args[0])?;
+            Ok(Some(Type::Pointer(Box::new(value_ty))))
+        }
+        "deref" => {
+            let ptr_ty = super::exprs::check_expr(checker, &args[0])?;
+            match ptr_ty {
+                Type::Pointer(elem) => Ok(Some(*elem)),
+                other => Err(TypeError {
+                    message: format!("`deref` expects a pointer, found `{other}`"),
+                    line,
+                    column,
+                }),
+            }
+        }
+        "set_deref" => {
+            let ptr_ty = super::exprs::check_expr(checker, &args[0])?;
+            let value_ty = super::exprs::check_expr(checker, &args[1])?;
+            match ptr_ty {
+                Type::Pointer(elem) if *elem == value_ty => Ok(Some(Type::Nil)),
+                Type::Pointer(elem) => Err(TypeError {
+                    message: format!(
+                        "`set_deref` into `Ptr<{elem}>` expects `{elem}`, found `{value_ty}`"
+                    ),
+                    line,
+                    column,
+                }),
+                other => Err(TypeError {
+                    message: format!("`set_deref` expects a pointer, found `{other}`"),
+                    line,
+                    column,
+                }),
+            }
+        }
+        "free" => {
+            let ptr_ty = super::exprs::check_expr(checker, &args[0])?;
+            match ptr_ty {
+                Type::Pointer(_) => Ok(Some(Type::Nil)),
+                other => Err(TypeError {
+                    message: format!("`free` expects a pointer, found `{other}`"),
+                    line,
+                    column,
+                }),
+            }
+        }
         _ => unreachable!("builtin `{callee}` is in the registry but has no typecheck arm"),
     }
 }

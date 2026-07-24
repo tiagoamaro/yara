@@ -134,8 +134,26 @@ impl Parser {
     /// `Boolean`, ...) via `types::normalize_type_alias`. Alias resolution
     /// happens here in the parser rather than the lexer so the lexer only
     /// ever emits raw identifier tokens.
+    ///
+    /// Also handles `Ptr<T>` syntax: if the type name is `Ptr`, expects a `<`,
+    /// recursively parses the inner type annotation, expects `>`, and returns
+    /// a `TypeAnnotation` with name `Ptr<{inner.name}>`. The inner type is
+    /// alias-normalized by the recursion, so `Ptr<Int>` and `Ptr<Ptr<Str>>`
+    /// both work.
     pub(super) fn parse_type_annotation(&mut self) -> Result<TypeAnnotation, ParseError> {
         let (name, line, column) = self.expect_ident()?;
+
+        if name == "Ptr" {
+            self.expect(&TokenKind::Lt, "`<`")?;
+            let inner = self.parse_type_annotation()?;
+            self.expect(&TokenKind::Gt, "`>`")?;
+            return Ok(TypeAnnotation {
+                name: format!("Ptr<{}>", inner.name),
+                line,
+                column,
+            });
+        }
+
         Ok(TypeAnnotation {
             name: normalize_type_alias(&name).to_string(),
             line,
@@ -468,5 +486,50 @@ mod tests {
             Stmt::FieldAssign { field, .. } => assert_eq!(field, "count"),
             other => panic!("expected FieldAssign, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_ptr_type_annotation() {
+        let stmts = parse("p: Ptr<Integer> = alloc(5)");
+        match &stmts[0] {
+            Stmt::VarDecl {
+                name,
+                type_ann: Some(t),
+                ..
+            } => {
+                assert_eq!(name, "p");
+                assert_eq!(t.name, "Ptr<Integer>");
+            }
+            other => panic!("expected VarDecl with Ptr type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_ptr_with_alias_normalization() {
+        let stmts = parse("p: Ptr<Int> = alloc(5)");
+        match &stmts[0] {
+            Stmt::VarDecl {
+                type_ann: Some(t), ..
+            } => assert_eq!(t.name, "Ptr<Integer>"),
+            other => panic!("expected VarDecl with Ptr type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_nested_ptr_type_annotation() {
+        let stmts = parse("p: Ptr<Ptr<Integer>> = alloc(q)");
+        match &stmts[0] {
+            Stmt::VarDecl {
+                type_ann: Some(t), ..
+            } => assert_eq!(t.name, "Ptr<Ptr<Integer>>"),
+            other => panic!("expected VarDecl with nested Ptr type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_ptr_missing_closing_bracket() {
+        let tokens = Lexer::new("p: Ptr<Integer = alloc(5)").tokenize().unwrap();
+        let err = Parser::new(tokens).parse_program().unwrap_err();
+        assert!(err.message.contains("expected `>`"));
     }
 }

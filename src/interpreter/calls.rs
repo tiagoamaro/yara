@@ -1,7 +1,8 @@
 use super::*;
 
 impl Interpreter {
-    /// Evaluates `len`/`push`/`get`/`set` if `callee` names one of them,
+    /// Evaluates `len`/`push`/`get`/`set`/`pop` array builtins and
+    /// `alloc`/`deref`/`set_deref`/`free` pointer builtins if `callee` names one of them,
     /// returning `Ok(None)` for any other callee so `call_function` falls
     /// through to a user-defined function lookup.
     pub(super) fn call_array_builtin(
@@ -76,6 +77,105 @@ impl Interpreter {
                     call_stack: self.call_stack.clone(),
                 })?;
                 Ok(Some(popped))
+            }
+            "alloc" => {
+                let value = self.eval_expr(&args[0])?;
+                self.heap.push(Some(value));
+                Ok(Some(Value::Pointer(self.heap.len() - 1)))
+            }
+            "deref" => {
+                let ptr = self.eval_expr(&args[0])?;
+                let idx = match ptr {
+                    Value::Pointer(i) => i,
+                    other => {
+                        return Err(RuntimeError {
+                            message: format!("`deref` expects a pointer, found `{other}`"),
+                            line,
+                            column,
+                            call_stack: self.call_stack.clone(),
+                        });
+                    }
+                };
+                match self.heap.get(idx) {
+                    Some(Some(v)) => Ok(Some(v.clone())),
+                    Some(None) => Err(RuntimeError {
+                        message: format!("use after free: pointer ptr#{idx} was already freed"),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    }),
+                    None => Err(RuntimeError {
+                        message: format!("invalid pointer ptr#{idx}"),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    }),
+                }
+            }
+            "set_deref" => {
+                let ptr = self.eval_expr(&args[0])?;
+                let new_value = self.eval_expr(&args[1])?;
+                let idx = match ptr {
+                    Value::Pointer(i) => i,
+                    other => {
+                        return Err(RuntimeError {
+                            message: format!("`set_deref` expects a pointer, found `{other}`"),
+                            line,
+                            column,
+                            call_stack: self.call_stack.clone(),
+                        });
+                    }
+                };
+                match self.heap.get_mut(idx) {
+                    Some(Some(slot)) => {
+                        *slot = new_value;
+                        Ok(Some(Value::Nil))
+                    }
+                    Some(None) => Err(RuntimeError {
+                        message: format!("use after free: pointer ptr#{idx} was already freed"),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    }),
+                    None => Err(RuntimeError {
+                        message: format!("invalid pointer ptr#{idx}"),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    }),
+                }
+            }
+            "free" => {
+                let ptr = self.eval_expr(&args[0])?;
+                let idx = match ptr {
+                    Value::Pointer(i) => i,
+                    other => {
+                        return Err(RuntimeError {
+                            message: format!("`free` expects a pointer, found `{other}`"),
+                            line,
+                            column,
+                            call_stack: self.call_stack.clone(),
+                        });
+                    }
+                };
+                match self.heap.get_mut(idx) {
+                    Some(Some(_)) => {
+                        self.heap[idx] = None;
+                        Ok(Some(Value::Nil))
+                    }
+                    Some(None) => Err(RuntimeError {
+                        message: format!("double free: pointer ptr#{idx} was already freed"),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    }),
+                    None => Err(RuntimeError {
+                        message: format!("invalid pointer ptr#{idx}"),
+                        line,
+                        column,
+                        call_stack: self.call_stack.clone(),
+                    }),
+                }
             }
             _ => unreachable!("builtin `{callee}` is in the registry but has no interpreter arm"),
         }

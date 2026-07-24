@@ -126,7 +126,10 @@ fn every_error_example_fails_at_expected_stage() {
             | "class_unassigned_field"
             | "class_unknown_field"
             | "class_wrong_arg_count" => Stage::Type,
-            "array_out_of_bounds" | "runtime_error_stack_trace" => Stage::Runtime,
+            "array_out_of_bounds"
+            | "runtime_error_stack_trace"
+            | "use_after_free"
+            | "double_free" => Stage::Runtime,
             other => panic!("no expected stage recorded for error example `{other}` — add one"),
         }
     }
@@ -164,6 +167,10 @@ fn every_builtin_is_handled_by_both_stages() {
             "get" => "xs: IntArray = [1]\nx: Integer = get(xs, 0)\n",
             "set" => "xs: IntArray = [1]\nset(xs, 0, 9)\n",
             "pop" => "xs: IntArray = [1]\ny: Integer = pop(xs)\n",
+            "alloc" => "p: Ptr<Integer> = alloc(5)\n",
+            "deref" => "p: Ptr<Integer> = alloc(5)\nx: Integer = deref(p)\n",
+            "set_deref" => "p: Ptr<Integer> = alloc(5)\nset_deref(p, 9)\n",
+            "free" => "p: Ptr<Integer> = alloc(5)\nfree(p)\n",
             other => {
                 panic!("no probe snippet for builtin `{other}` — add one so this test covers it")
             }
