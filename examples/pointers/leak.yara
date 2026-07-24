@@ -1,6 +1,7 @@
 # Memory leak: allocating without freeing
 # In manual memory mode, this is allowed — the language doesn't force cleanup.
-# Later, when garbage collection is added, we can compare GC vs manual management.
+# See gc.yara for the collected alternative: collect() reclaims exactly this
+# kind of forgotten allocation.
 
 i: Integer = 0
 while i < 3
