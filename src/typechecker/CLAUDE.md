@@ -28,7 +28,7 @@ Implemented. `TypeChecker::new().check_program(&[Stmt]) -> Result<(), TypeError>
 - Errors (`TypeError`) carry line/column same shape as `LexError`/`ParseError`: `Display` = `"{line}:{column}: {message}"`.
 
 ## Gotchas
-- `stmt_line`/`stmt_column` free functions exist only to report the function-def's own position for return-type mismatches (matching on `Stmt::FunctionDef` again would move it) — reuse if similar position-of-outer-stmt lookups are needed later.
+- Return-type-mismatch errors report the enclosing `def`/method's own position via `Stmt::line()`/`Stmt::column()` (the shared `ast` helpers) rather than re-destructuring `Stmt::FunctionDef` at the error site.
 - Unknown type names in annotations (e.g. a typo) surface as `TypeError` at check time, not parse time — parser accepts any identifier as a type name. This is also how you'd misspell a class name in an annotation — same error, "unknown type `X`".
 - **Soundness gap, classes**: an instance var declared with no value (`count: Integer`) has no "definitely assigned before use" tracking. The typechecker happily type-checks a method that reads a field before any method (including `initializer`) has assigned it — at runtime that read is `Value::Nil`, not an `Integer`. Not fixed; noted in root `CLAUDE.md` TODO.
 - No inheritance: there's exactly one flat namespace of classes, no `extends`/`super`, no polymorphism. `check_method_call`/`check_field_access` only ever look at the exact class named by `Type::Instance`.

@@ -496,3 +496,46 @@ pub enum Stmt {
         column: usize,
     },
 }
+
+impl Stmt {
+    /// Returns the source line this statement started on.
+    ///
+    /// Mirrors [`Expr::line`]: every variant stores its own `line` field except
+    /// `ExprStmt`, which has no position of its own and defers to the wrapped
+    /// expression's. Centralizes the exhaustive match so any stage needing "the
+    /// line of this statement" for a diagnostic can call `stmt.line()` instead
+    /// of re-destructuring the variant itself.
+    pub fn line(&self) -> usize {
+        match self {
+            Stmt::VarDecl { line, .. }
+            | Stmt::ConstDecl { line, .. }
+            | Stmt::FunctionDef { line, .. }
+            | Stmt::Return { line, .. }
+            | Stmt::If { line, .. }
+            | Stmt::While { line, .. }
+            | Stmt::For { line, .. }
+            | Stmt::Import { line, .. }
+            | Stmt::ClassDef { line, .. }
+            | Stmt::FieldAssign { line, .. } => *line,
+            Stmt::ExprStmt(expr) => expr.line(),
+        }
+    }
+
+    /// Returns the source column this statement started on. Same rationale as
+    /// [`Stmt::line`].
+    pub fn column(&self) -> usize {
+        match self {
+            Stmt::VarDecl { column, .. }
+            | Stmt::ConstDecl { column, .. }
+            | Stmt::FunctionDef { column, .. }
+            | Stmt::Return { column, .. }
+            | Stmt::If { column, .. }
+            | Stmt::While { column, .. }
+            | Stmt::For { column, .. }
+            | Stmt::Import { column, .. }
+            | Stmt::ClassDef { column, .. }
+            | Stmt::FieldAssign { column, .. } => *column,
+            Stmt::ExprStmt(expr) => expr.column(),
+        }
+    }
+}

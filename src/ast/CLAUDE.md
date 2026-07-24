@@ -6,7 +6,7 @@ AST node type definitions shared by parser, typechecker, interpreter.
 Implemented. `Expr`, `Stmt`, `TypeAnnotation`, `Param`, `BinOp` defined.
 
 ## Design
-- Every `Expr` variant and `Stmt` variant carries `line`/`column`. `Expr::line()`/`Expr::column()` helpers dispatch across variants.
+- Every `Expr` variant and `Stmt` variant carries `line`/`column`. `Expr::line()`/`Expr::column()` and `Stmt::line()`/`Stmt::column()` helpers dispatch across variants (the `Stmt` ones delegate to the wrapped expression for `ExprStmt`). Use these instead of re-matching a node just to read its position.
 - `TypeAnnotation.name` is always the canonical (alias-normalized) form — parser calls `types::normalize_type_alias` before constructing it, so typechecker/interpreter never see `Int`/`Bool`/`Str`, only `Integer`/`Boolean`/`String`.
 - `Stmt::If` models `elsif` as `Vec<(Expr, Vec<Stmt>)>`, separate from optional `else_body`.
 - Unary: `Expr::Unary { op: UnOp::Neg, expr, line, column }` for `-x`. Only negation exists — no `!`/`not` yet.

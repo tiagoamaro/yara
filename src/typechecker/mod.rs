@@ -300,8 +300,8 @@ impl TypeChecker {
                                 "method `{name}#{}` declared to return `{declared}`, but returns `{actual}`",
                                 method_name(m)
                             ),
-                            line: stmt_line(m),
-                            column: stmt_column(m),
+                            line: m.line(),
+                            column: m.column(),
                         });
                     }
                 }
@@ -479,8 +479,8 @@ impl TypeChecker {
                             message: format!(
                                 "function `{name}` declared to return `{declared}`, but returns `{actual}`"
                             ),
-                            line: stmt_line(stmt),
-                            column: stmt_column(stmt),
+                            line: stmt.line(),
+                            column: stmt.column(),
                         });
                     }
                 }
@@ -1217,45 +1217,6 @@ fn binop_symbol(op: BinOp) -> &'static str {
         BinOp::Gt => ">",
         BinOp::LtEq => "<=",
         BinOp::GtEq => ">=",
-    }
-}
-
-/// Extracts a statement's own source line, for reporting a return-type
-/// mismatch at the position of the enclosing `def`/method itself (rather
-/// than at whatever sub-expression produced the mismatched tail type) —
-/// matching on `Stmt::FunctionDef` a second time at the error site would
-/// require re-destructuring the same statement, so this (and `stmt_column`)
-/// factor that out.
-fn stmt_line(stmt: &Stmt) -> usize {
-    match stmt {
-        Stmt::VarDecl { line, .. }
-        | Stmt::ConstDecl { line, .. }
-        | Stmt::FunctionDef { line, .. }
-        | Stmt::Return { line, .. }
-        | Stmt::If { line, .. }
-        | Stmt::While { line, .. }
-        | Stmt::For { line, .. }
-        | Stmt::Import { line, .. }
-        | Stmt::ClassDef { line, .. }
-        | Stmt::FieldAssign { line, .. } => *line,
-        Stmt::ExprStmt(expr) => expr.line(),
-    }
-}
-
-/// Column counterpart to `stmt_line` — see that function's doc comment.
-fn stmt_column(stmt: &Stmt) -> usize {
-    match stmt {
-        Stmt::VarDecl { column, .. }
-        | Stmt::ConstDecl { column, .. }
-        | Stmt::FunctionDef { column, .. }
-        | Stmt::Return { column, .. }
-        | Stmt::If { column, .. }
-        | Stmt::While { column, .. }
-        | Stmt::For { column, .. }
-        | Stmt::Import { column, .. }
-        | Stmt::ClassDef { column, .. }
-        | Stmt::FieldAssign { column, .. } => *column,
-        Stmt::ExprStmt(expr) => expr.column(),
     }
 }
 
