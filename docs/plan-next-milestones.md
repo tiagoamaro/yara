@@ -7,6 +7,8 @@ Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one a
 
 ## Phase 1 — Fix imported-file snippet rendering (known gap, small, foundational)
 
+**Done** (2026-07-24).
+
 Problem: `Span` has a `file` hook but errors always render snippets from the entry file; positions from imported files show wrong/out-of-range snippets.
 
 Steps:
@@ -21,6 +23,8 @@ Agent split: resolver agent, diagnostics agent, main.rs agent, test-authoring ag
 Gate: full test suite + golden error output byte-compare for existing errors (must not change for single-file programs).
 
 ## Phase 2 — Definite-assignment soundness fix (known gap, medium)
+
+**Done** (2026-07-24).
 
 Problem: `count: Integer` field with no initializer reads as `Nil` at runtime; typechecker accepts it.
 
@@ -66,7 +70,7 @@ Single-parent, methods + fields inherit, no override keyword first cut; `super` 
 ## Structure improvements (do opportunistically, phase-boundary work)
 
 1. **Split the three big `mod.rs` files** (typechecker 1405, interpreter 1259, parser 1134 lines) into submodules: e.g. `typechecker/{expr,stmt,class}.rs`, `interpreter/{expr,stmt,value,heap}.rs`, `parser/{expr,stmt,types}.rs`. Behavior-preserving; do it *before* Phase 3 bloats them further. Keep dispatchers whole per prior decision — split by node family, not by extracting every arm.
-2. **Golden error-output tests in-repo**: byte-compare rendered diagnostics for every `examples/errors/*` inside `tests/` (currently verified manually against golden). Locks the "byte-identical errors" invariant automatically.
+2. **Golden error-output tests in-repo**: byte-compare rendered diagnostics for every `examples/errors/*` inside `tests/` (currently verified manually against golden). Locks the "byte-identical errors" invariant automatically. **Done** (2026-07-24).
 3. **Builtins duplication**: registry names arity but behavior lives in two parallel matches. After pointers land (more builtins), consider one `Builtin` trait/struct with `check(args) -> Type` + `eval(args) -> Value` per builtin, killing the parallel matches. Not urgent; do when the matches hurt.
 4. **CI**: tiny GitHub Actions workflow — `cargo fmt --check` + `cargo test`. Cheap, catches drift.
 5. **Span everywhere instead of bare (line, column)**: Phase 1 pushes this anyway; finish by making all error types hold `Span` uniformly.
