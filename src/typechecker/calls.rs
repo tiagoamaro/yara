@@ -137,10 +137,197 @@ pub(super) fn check_call_args(
     Ok(())
 }
 
+pub(crate) fn check_len(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    _line: usize,
+    _column: usize,
+) -> Result<Type, TypeError> {
+    match super::expressions::check_expr(checker, &args[0])? {
+        Type::Array(_) => Ok(Type::Integer),
+        other => Err(TypeError {
+            message: format!("`len` expects an array, found `{other}`"),
+            line: args[0].line(),
+            column: args[0].column(),
+        }),
+    }
+}
+
+pub(crate) fn check_push(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Type, TypeError> {
+    let array_ty = super::expressions::check_expr(checker, &args[0])?;
+    let value_ty = super::expressions::check_expr(checker, &args[1])?;
+    match array_ty {
+        Type::Array(elem) if *elem == value_ty => Ok(Type::Nil),
+        Type::Array(elem) => Err(TypeError {
+            message: format!("`push` onto `Array<{elem}>` expects `{elem}`, found `{value_ty}`"),
+            line,
+            column,
+        }),
+        other => Err(TypeError {
+            message: format!("`push` expects an array, found `{other}`"),
+            line,
+            column,
+        }),
+    }
+}
+
+pub(crate) fn check_get(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Type, TypeError> {
+    let array_ty = super::expressions::check_expr(checker, &args[0])?;
+    let index_ty = super::expressions::check_expr(checker, &args[1])?;
+    if index_ty != Type::Integer {
+        return Err(TypeError {
+            message: format!("`get` index must be Integer, found `{index_ty}`"),
+            line,
+            column,
+        });
+    }
+    match array_ty {
+        Type::Array(elem) => Ok(*elem),
+        other => Err(TypeError {
+            message: format!("`get` expects an array, found `{other}`"),
+            line,
+            column,
+        }),
+    }
+}
+
+pub(crate) fn check_set(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Type, TypeError> {
+    let array_ty = super::expressions::check_expr(checker, &args[0])?;
+    let index_ty = super::expressions::check_expr(checker, &args[1])?;
+    let value_ty = super::expressions::check_expr(checker, &args[2])?;
+    if index_ty != Type::Integer {
+        return Err(TypeError {
+            message: format!("`set` index must be Integer, found `{index_ty}`"),
+            line,
+            column,
+        });
+    }
+    match array_ty {
+        Type::Array(elem) if *elem == value_ty => Ok(Type::Nil),
+        Type::Array(elem) => Err(TypeError {
+            message: format!("`set` onto `Array<{elem}>` expects `{elem}`, found `{value_ty}`"),
+            line,
+            column,
+        }),
+        other => Err(TypeError {
+            message: format!("`set` expects an array, found `{other}`"),
+            line,
+            column,
+        }),
+    }
+}
+
+pub(crate) fn check_pop(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    _line: usize,
+    _column: usize,
+) -> Result<Type, TypeError> {
+    match super::expressions::check_expr(checker, &args[0])? {
+        Type::Array(elem) => Ok(*elem),
+        other => Err(TypeError {
+            message: format!("`pop` expects an array, found `{other}`"),
+            line: args[0].line(),
+            column: args[0].column(),
+        }),
+    }
+}
+
+pub(crate) fn check_alloc(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    _line: usize,
+    _column: usize,
+) -> Result<Type, TypeError> {
+    let value_ty = super::expressions::check_expr(checker, &args[0])?;
+    Ok(Type::Pointer(Box::new(value_ty)))
+}
+
+pub(crate) fn check_deref(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Type, TypeError> {
+    let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
+    match ptr_ty {
+        Type::Pointer(elem) => Ok(*elem),
+        other => Err(TypeError {
+            message: format!("`deref` expects a pointer, found `{other}`"),
+            line,
+            column,
+        }),
+    }
+}
+
+pub(crate) fn check_set_deref(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Type, TypeError> {
+    let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
+    let value_ty = super::expressions::check_expr(checker, &args[1])?;
+    match ptr_ty {
+        Type::Pointer(elem) if super::assignable(&elem, &value_ty) => Ok(Type::Nil),
+        Type::Pointer(elem) => Err(TypeError {
+            message: format!("`set_deref` into `Ptr<{elem}>` expects `{elem}`, found `{value_ty}`"),
+            line,
+            column,
+        }),
+        other => Err(TypeError {
+            message: format!("`set_deref` expects a pointer, found `{other}`"),
+            line,
+            column,
+        }),
+    }
+}
+
+pub(crate) fn check_free(
+    checker: &mut TypeChecker,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Type, TypeError> {
+    let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
+    match ptr_ty {
+        Type::Pointer(_) => Ok(Type::Nil),
+        other => Err(TypeError {
+            message: format!("`free` expects a pointer, found `{other}`"),
+            line,
+            column,
+        }),
+    }
+}
+
+pub(crate) fn check_collect(
+    _checker: &mut TypeChecker,
+    _args: &[Expr],
+    _line: usize,
+    _column: usize,
+) -> Result<Type, TypeError> {
+    // Mark-and-sweep GC over the pointer heap; yields the freed-slot count.
+    Ok(Type::Integer)
+}
+
 /// Type-checks array and pointer builtins. Arity is checked once here from the
-/// registry; the per-builtin arms below can then trust args have exactly the
-/// right number of elements. Handles `len`/`push`/`get`/`set`/`pop` (array
-/// builtins), `alloc`/`deref`/`set_deref`/`free` (pointer builtins), and `collect` (GC).
+/// registry; the per-builtin dispatch via function pointer can then trust args
+/// have exactly the right number of elements.
 fn check_array_builtin(
     checker: &mut TypeChecker,
     callee: &str,
@@ -151,8 +338,8 @@ fn check_array_builtin(
     let Some(builtin) = crate::builtins::lookup(callee) else {
         return Ok(None);
     };
-    // Arity is checked once here from the registry; the per-builtin arms
-    // below can then trust `args` has exactly `builtin.arity` elements.
+    // Arity is checked once here from the registry; the function pointer
+    // dispatch can then trust `args` has exactly `builtin.arity` elements.
     if args.len() != builtin.arity {
         return Err(TypeError {
             message: format!(
@@ -164,135 +351,5 @@ fn check_array_builtin(
             column,
         });
     }
-    match callee {
-        "len" => match super::expressions::check_expr(checker, &args[0])? {
-            Type::Array(_) => Ok(Some(Type::Integer)),
-            other => Err(TypeError {
-                message: format!("`len` expects an array, found `{other}`"),
-                line,
-                column,
-            }),
-        },
-        "push" => {
-            let array_ty = super::expressions::check_expr(checker, &args[0])?;
-            let value_ty = super::expressions::check_expr(checker, &args[1])?;
-            match array_ty {
-                Type::Array(elem) if *elem == value_ty => Ok(Some(Type::Nil)),
-                Type::Array(elem) => Err(TypeError {
-                    message: format!(
-                        "`push` onto `Array<{elem}>` expects `{elem}`, found `{value_ty}`"
-                    ),
-                    line,
-                    column,
-                }),
-                other => Err(TypeError {
-                    message: format!("`push` expects an array, found `{other}`"),
-                    line,
-                    column,
-                }),
-            }
-        }
-        "get" => {
-            let array_ty = super::expressions::check_expr(checker, &args[0])?;
-            let index_ty = super::expressions::check_expr(checker, &args[1])?;
-            if index_ty != Type::Integer {
-                return Err(TypeError {
-                    message: format!("`get` index must be Integer, found `{index_ty}`"),
-                    line,
-                    column,
-                });
-            }
-            match array_ty {
-                Type::Array(elem) => Ok(Some(*elem)),
-                other => Err(TypeError {
-                    message: format!("`get` expects an array, found `{other}`"),
-                    line,
-                    column,
-                }),
-            }
-        }
-        "set" => {
-            let array_ty = super::expressions::check_expr(checker, &args[0])?;
-            let index_ty = super::expressions::check_expr(checker, &args[1])?;
-            let value_ty = super::expressions::check_expr(checker, &args[2])?;
-            if index_ty != Type::Integer {
-                return Err(TypeError {
-                    message: format!("`set` index must be Integer, found `{index_ty}`"),
-                    line,
-                    column,
-                });
-            }
-            match array_ty {
-                Type::Array(elem) if *elem == value_ty => Ok(Some(Type::Nil)),
-                Type::Array(elem) => Err(TypeError {
-                    message: format!(
-                        "`set` onto `Array<{elem}>` expects `{elem}`, found `{value_ty}`"
-                    ),
-                    line,
-                    column,
-                }),
-                other => Err(TypeError {
-                    message: format!("`set` expects an array, found `{other}`"),
-                    line,
-                    column,
-                }),
-            }
-        }
-        "pop" => match super::expressions::check_expr(checker, &args[0])? {
-            Type::Array(elem) => Ok(Some(*elem)),
-            other => Err(TypeError {
-                message: format!("`pop` expects an array, found `{other}`"),
-                line,
-                column,
-            }),
-        },
-        "alloc" => {
-            let value_ty = super::expressions::check_expr(checker, &args[0])?;
-            Ok(Some(Type::Pointer(Box::new(value_ty))))
-        }
-        "deref" => {
-            let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
-            match ptr_ty {
-                Type::Pointer(elem) => Ok(Some(*elem)),
-                other => Err(TypeError {
-                    message: format!("`deref` expects a pointer, found `{other}`"),
-                    line,
-                    column,
-                }),
-            }
-        }
-        "set_deref" => {
-            let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
-            let value_ty = super::expressions::check_expr(checker, &args[1])?;
-            match ptr_ty {
-                Type::Pointer(elem) if super::assignable(&elem, &value_ty) => Ok(Some(Type::Nil)),
-                Type::Pointer(elem) => Err(TypeError {
-                    message: format!(
-                        "`set_deref` into `Ptr<{elem}>` expects `{elem}`, found `{value_ty}`"
-                    ),
-                    line,
-                    column,
-                }),
-                other => Err(TypeError {
-                    message: format!("`set_deref` expects a pointer, found `{other}`"),
-                    line,
-                    column,
-                }),
-            }
-        }
-        "free" => {
-            let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
-            match ptr_ty {
-                Type::Pointer(_) => Ok(Some(Type::Nil)),
-                other => Err(TypeError {
-                    message: format!("`free` expects a pointer, found `{other}`"),
-                    line,
-                    column,
-                }),
-            }
-        }
-        // Mark-and-sweep GC over the pointer heap; yields the freed-slot count.
-        "collect" => Ok(Some(Type::Integer)),
-        _ => unreachable!("builtin `{callee}` is in the registry but has no typecheck arm"),
-    }
+    (builtin.check)(checker, args, line, column).map(Some)
 }

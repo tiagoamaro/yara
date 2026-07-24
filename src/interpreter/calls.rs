@@ -1,8 +1,275 @@
 use super::*;
 
+pub(crate) fn eval_len(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let arr = interp.eval_expr(&args[0])?;
+    match arr {
+        Value::Array(items) => {
+            let len = items.borrow().len() as i64;
+            Ok(Value::Integer(len))
+        }
+        other => Err(RuntimeError {
+            message: format!("`len` expects an array, found `{other}`"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+pub(crate) fn eval_push(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let arr = interp.eval_expr(&args[0])?;
+    let value = interp.eval_expr(&args[1])?;
+    match arr {
+        Value::Array(items) => {
+            items.borrow_mut().push(value);
+            Ok(Value::Nil)
+        }
+        other => Err(RuntimeError {
+            message: format!("`push` expects an array, found `{other}`"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+pub(crate) fn eval_get(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let arr = interp.eval_expr(&args[0])?;
+    let idx = interp.eval_int(&args[1], line, column)?;
+    interp.array_get(&arr, idx, line, column)
+}
+
+pub(crate) fn eval_set(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let arr = interp.eval_expr(&args[0])?;
+    let idx = interp.eval_int(&args[1], line, column)?;
+    let value = interp.eval_expr(&args[2])?;
+    match arr {
+        Value::Array(items) => {
+            let mut items = items.borrow_mut();
+            let Some(slot) = usize::try_from(idx).ok().and_then(|i| items.get_mut(i)) else {
+                return Err(RuntimeError {
+                    message: format!("array index {idx} out of bounds (length {})", items.len()),
+                    line,
+                    column,
+                    call_stack: interp.call_stack.clone(),
+                });
+            };
+            *slot = value;
+            Ok(Value::Nil)
+        }
+        other => Err(RuntimeError {
+            message: format!("`set` expects an array, found `{other}`"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+pub(crate) fn eval_pop(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let arr = interp.eval_expr(&args[0])?;
+    match arr {
+        Value::Array(items) => {
+            let popped = items.borrow_mut().pop().ok_or_else(|| RuntimeError {
+                message: "cannot `pop` from an empty array".to_string(),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            })?;
+            Ok(popped)
+        }
+        other => Err(RuntimeError {
+            message: format!("`pop` expects an array, found `{other}`"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+pub(crate) fn eval_alloc(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    _line: usize,
+    _column: usize,
+) -> Result<Value, RuntimeError> {
+    let value = interp.eval_expr(&args[0])?;
+    interp.heap.push(Some(value));
+    Ok(Value::Pointer(interp.heap.len() - 1))
+}
+
+pub(crate) fn eval_deref(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let ptr = interp.eval_expr(&args[0])?;
+    let idx = match ptr {
+        Value::Pointer(i) => i,
+        Value::Nil => {
+            return Err(RuntimeError {
+                message: "nil pointer dereference: `deref` on `nil`".to_string(),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+        other => {
+            return Err(RuntimeError {
+                message: format!("`deref` expects a pointer, found `{other}`"),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+    };
+    match interp.heap.get(idx) {
+        Some(Some(v)) => Ok(v.clone()),
+        Some(None) => Err(RuntimeError {
+            message: format!("use after free: pointer ptr#{idx} was already freed"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+        None => Err(RuntimeError {
+            message: format!("invalid pointer ptr#{idx}"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+pub(crate) fn eval_set_deref(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let ptr = interp.eval_expr(&args[0])?;
+    let new_value = interp.eval_expr(&args[1])?;
+    let idx = match ptr {
+        Value::Pointer(i) => i,
+        Value::Nil => {
+            return Err(RuntimeError {
+                message: "nil pointer dereference: `set_deref` on `nil`".to_string(),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+        other => {
+            return Err(RuntimeError {
+                message: format!("`set_deref` expects a pointer, found `{other}`"),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+    };
+    match interp.heap.get_mut(idx) {
+        Some(Some(slot)) => {
+            *slot = new_value;
+            Ok(Value::Nil)
+        }
+        Some(None) => Err(RuntimeError {
+            message: format!("use after free: pointer ptr#{idx} was already freed"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+        None => Err(RuntimeError {
+            message: format!("invalid pointer ptr#{idx}"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+pub(crate) fn eval_free(
+    interp: &mut Interpreter,
+    args: &[Expr],
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let ptr = interp.eval_expr(&args[0])?;
+    let idx = match ptr {
+        Value::Pointer(i) => i,
+        Value::Nil => {
+            return Err(RuntimeError {
+                message: "cannot `free` a nil pointer".to_string(),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+        other => {
+            return Err(RuntimeError {
+                message: format!("`free` expects a pointer, found `{other}`"),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+    };
+    match interp.heap.get_mut(idx) {
+        Some(Some(_)) => {
+            interp.heap[idx] = None;
+            Ok(Value::Nil)
+        }
+        Some(None) => Err(RuntimeError {
+            message: format!("double free: pointer ptr#{idx} was already freed"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+        None => Err(RuntimeError {
+            message: format!("invalid pointer ptr#{idx}"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+pub(crate) fn eval_collect(
+    interp: &mut Interpreter,
+    _args: &[Expr],
+    _line: usize,
+    _column: usize,
+) -> Result<Value, RuntimeError> {
+    Ok(Value::Integer(interp.collect_garbage()))
+}
+
 impl Interpreter {
-    /// Evaluates `len`/`push`/`get`/`set`/`pop` array builtins and
-    /// `alloc`/`deref`/`set_deref`/`free` pointer builtins if `callee` names one of them,
+    /// Evaluates array and pointer builtins if `callee` names one of them,
     /// returning `Ok(None)` for any other callee so `call_function` falls
     /// through to a user-defined function lookup.
     pub(super) fn call_array_builtin(
@@ -12,198 +279,10 @@ impl Interpreter {
         line: usize,
         column: usize,
     ) -> Result<Option<Value>, RuntimeError> {
-        if builtins::lookup(callee).is_none() {
+        let Some(builtin) = builtins::lookup(callee) else {
             return Ok(None);
-        }
-        let expect_array = |v: Value,
-                            call_stack: &[StackFrame]|
-         -> Result<Rc<RefCell<Vec<Value>>>, RuntimeError> {
-            match v {
-                Value::Array(items) => Ok(items),
-                other => Err(RuntimeError {
-                    message: format!("`{callee}` expects an array, found `{other}`"),
-                    line,
-                    column,
-                    call_stack: call_stack.to_vec(),
-                }),
-            }
         };
-        match callee {
-            "len" => {
-                let arr = self.eval_expr(&args[0])?;
-                let items = expect_array(arr, &self.call_stack)?;
-                let len = items.borrow().len() as i64;
-                Ok(Some(Value::Integer(len)))
-            }
-            "push" => {
-                let arr = self.eval_expr(&args[0])?;
-                let value = self.eval_expr(&args[1])?;
-                let items = expect_array(arr, &self.call_stack)?;
-                items.borrow_mut().push(value);
-                Ok(Some(Value::Nil))
-            }
-            "get" => {
-                let arr = self.eval_expr(&args[0])?;
-                let idx = self.eval_int(&args[1], line, column)?;
-                Ok(Some(self.array_get(&arr, idx, line, column)?))
-            }
-            "set" => {
-                let arr = self.eval_expr(&args[0])?;
-                let idx = self.eval_int(&args[1], line, column)?;
-                let value = self.eval_expr(&args[2])?;
-                let items = expect_array(arr, &self.call_stack)?;
-                let mut items = items.borrow_mut();
-                let Some(slot) = usize::try_from(idx).ok().and_then(|i| items.get_mut(i)) else {
-                    return Err(RuntimeError {
-                        message: format!(
-                            "array index {idx} out of bounds (length {})",
-                            items.len()
-                        ),
-                        line,
-                        column,
-                        call_stack: self.call_stack.clone(),
-                    });
-                };
-                *slot = value;
-                Ok(Some(Value::Nil))
-            }
-            "pop" => {
-                let arr = self.eval_expr(&args[0])?;
-                let items = expect_array(arr, &self.call_stack)?;
-                let popped = items.borrow_mut().pop().ok_or_else(|| RuntimeError {
-                    message: "cannot `pop` from an empty array".to_string(),
-                    line,
-                    column,
-                    call_stack: self.call_stack.clone(),
-                })?;
-                Ok(Some(popped))
-            }
-            "alloc" => {
-                let value = self.eval_expr(&args[0])?;
-                self.heap.push(Some(value));
-                Ok(Some(Value::Pointer(self.heap.len() - 1)))
-            }
-            "deref" => {
-                let ptr = self.eval_expr(&args[0])?;
-                let idx = match ptr {
-                    Value::Pointer(i) => i,
-                    Value::Nil => {
-                        return Err(RuntimeError {
-                            message: "nil pointer dereference: `deref` on `nil`".to_string(),
-                            line,
-                            column,
-                            call_stack: self.call_stack.clone(),
-                        });
-                    }
-                    other => {
-                        return Err(RuntimeError {
-                            message: format!("`deref` expects a pointer, found `{other}`"),
-                            line,
-                            column,
-                            call_stack: self.call_stack.clone(),
-                        });
-                    }
-                };
-                match self.heap.get(idx) {
-                    Some(Some(v)) => Ok(Some(v.clone())),
-                    Some(None) => Err(RuntimeError {
-                        message: format!("use after free: pointer ptr#{idx} was already freed"),
-                        line,
-                        column,
-                        call_stack: self.call_stack.clone(),
-                    }),
-                    None => Err(RuntimeError {
-                        message: format!("invalid pointer ptr#{idx}"),
-                        line,
-                        column,
-                        call_stack: self.call_stack.clone(),
-                    }),
-                }
-            }
-            "set_deref" => {
-                let ptr = self.eval_expr(&args[0])?;
-                let new_value = self.eval_expr(&args[1])?;
-                let idx = match ptr {
-                    Value::Pointer(i) => i,
-                    Value::Nil => {
-                        return Err(RuntimeError {
-                            message: "nil pointer dereference: `set_deref` on `nil`".to_string(),
-                            line,
-                            column,
-                            call_stack: self.call_stack.clone(),
-                        });
-                    }
-                    other => {
-                        return Err(RuntimeError {
-                            message: format!("`set_deref` expects a pointer, found `{other}`"),
-                            line,
-                            column,
-                            call_stack: self.call_stack.clone(),
-                        });
-                    }
-                };
-                match self.heap.get_mut(idx) {
-                    Some(Some(slot)) => {
-                        *slot = new_value;
-                        Ok(Some(Value::Nil))
-                    }
-                    Some(None) => Err(RuntimeError {
-                        message: format!("use after free: pointer ptr#{idx} was already freed"),
-                        line,
-                        column,
-                        call_stack: self.call_stack.clone(),
-                    }),
-                    None => Err(RuntimeError {
-                        message: format!("invalid pointer ptr#{idx}"),
-                        line,
-                        column,
-                        call_stack: self.call_stack.clone(),
-                    }),
-                }
-            }
-            "free" => {
-                let ptr = self.eval_expr(&args[0])?;
-                let idx = match ptr {
-                    Value::Pointer(i) => i,
-                    Value::Nil => {
-                        return Err(RuntimeError {
-                            message: "cannot `free` a nil pointer".to_string(),
-                            line,
-                            column,
-                            call_stack: self.call_stack.clone(),
-                        });
-                    }
-                    other => {
-                        return Err(RuntimeError {
-                            message: format!("`free` expects a pointer, found `{other}`"),
-                            line,
-                            column,
-                            call_stack: self.call_stack.clone(),
-                        });
-                    }
-                };
-                match self.heap.get_mut(idx) {
-                    Some(Some(_)) => {
-                        self.heap[idx] = None;
-                        Ok(Some(Value::Nil))
-                    }
-                    Some(None) => Err(RuntimeError {
-                        message: format!("double free: pointer ptr#{idx} was already freed"),
-                        line,
-                        column,
-                        call_stack: self.call_stack.clone(),
-                    }),
-                    None => Err(RuntimeError {
-                        message: format!("invalid pointer ptr#{idx}"),
-                        line,
-                        column,
-                        call_stack: self.call_stack.clone(),
-                    }),
-                }
-            }
-            "collect" => Ok(Some(Value::Integer(self.collect_garbage()))),
-            _ => unreachable!("builtin `{callee}` is in the registry but has no interpreter arm"),
-        }
+        (builtin.eval)(self, args, line, column).map(Some)
     }
 
     /// The teaching mark-and-sweep collector behind the `collect()` builtin.
