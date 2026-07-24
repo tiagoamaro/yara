@@ -1,0 +1,5 @@
+type error: field `count` of class `Counter` is never assigned in `initializer` (it would be `Nil` at runtime, not `Integer`)
+  --> examples/errors/class_unassigned_field.yara:2:3
+  |
+2 |   count: Integer
+  |   ^

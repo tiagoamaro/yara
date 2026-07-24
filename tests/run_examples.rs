@@ -123,6 +123,7 @@ fn every_error_example_fails_at_expected_stage() {
             | "import_type_error_helper"
             | "undefined_variable"
             | "class_field_type_mismatch"
+            | "class_unassigned_field"
             | "class_unknown_field"
             | "class_wrong_arg_count" => Stage::Type,
             "array_out_of_bounds" | "runtime_error_stack_trace" => Stage::Runtime,
