@@ -5,6 +5,13 @@ Static type-checking pass over the parsed AST, before interpretation.
 ## Status
 Implemented. `TypeChecker::new().check_program(&[Stmt]) -> Result<(), TypeError>`.
 
+## Layout
+- **`mod.rs`** (400 lines) — module root: `Type` enum + `Display`/`from_annotation_name`, `TypeError`, `FunctionSig`/`ClassInfo`, `TypeChecker` struct and `new()`/`check_program()`, scope helpers (`push_scope`/`pop_scope`/`declare_var`/`lookup_var`/`resolve_type`), and the test suite. Public API: `Type`, `TypeError`, `TypeChecker`.
+- **`classes.rs`** (393 lines) — class-related checking: `collect_classes` (two-pass registration), `check_classes` (method body checking), `check_fields_assigned_in_initializer` (field assignment validation), `check_field_access` (field type resolution), `check_method_call` (method dispatch and `.new()` construction), helper functions `collect_assigned_names`, `method_name`.
+- **`calls.rs`** (247 lines) — function/method/builtin call checking: `collect_function_signatures` (top-level function pre-registration), `check_call` (free function dispatch), `check_call_args` (shared arity/type validation), `check_array_builtin` (array builtin type checking for `len`/`push`/`get`/`set`/`pop`).
+- **`exprs.rs`** (195 lines) — expression-level checking: `check_expr` (main recursive dispatcher over all `Expr` variants), `check_binary_op` (operator type rules), `binop_symbol` (operator display helper).
+- **`stmts.rs`** (323 lines) — statement-level checking: `check_stmt` (main recursive dispatcher over all `Stmt` variants), `check_block` (block type checking), `check_body_return_type` (function body return type), `check_tail_stmt` (tail-position statement type), `combine_tail_types` (branch type reconciliation).
+
 ## Design
 - `Type` enum: `Integer, Float, Boolean, String, Nil, Array(Box<Type>), Instance(String)` — the canonical (post-alias-normalization) names from `ast::TypeAnnotation`.
 - **Classes**: `ClassInfo { fields: HashMap<String, Type>, methods: HashMap<String, FunctionSig> }` per class name in `self.classes`, built by `collect_classes` in two passes — first register every class *name* with an empty `ClassInfo` (so annotations can reference any class regardless of declaration order, including self-reference), then fill in each class's actual field/method types (`resolve_type` treats any name in `self.classes` as `Type::Instance(name)`, so a field/param/return annotation naming a class works exactly like a builtin type annotation).
