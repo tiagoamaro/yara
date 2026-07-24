@@ -17,7 +17,7 @@ Implemented. `TypeChecker::new().check_program(&[Stmt]) -> Result<(), TypeError>
 - `arr[i]` (`Expr::Index`): index must be `Integer`; result type is the array's element type.
 - Array builtins (`len`, `push`, `get`, `set`, `pop`) are checked in `check_array_builtin`, called from `Expr::Call` before falling through to user-defined function lookup — same ad-hoc pattern as `print`, not real functions in the `functions` table. `push`/`set` require the value argument's type to match the array's element type exactly.
 - Function signatures collected in a pre-pass (`collect_function_signatures`) before checking bodies, so forward references / call order doesn't matter.
-- Scoping: `Vec<Scope>` stack, `push_scope`/`pop_scope` around function bodies and `for` loops; `lookup_var` searches innermost-out.
+- Scoping: `env: Environment<Type>` (the shared `src/env.rs` scope stack), with `push_scope`/`pop_scope`/`declare_var`/`lookup_var` as thin delegators around function bodies and `for` loops; `lookup_var` searches innermost-out. The interpreter uses the same `Environment` over `Value` — same container, separate check-vs-eval logic.
 - No implicit numeric coercion: `Int + Float` is a type error (`check_binary_op`). `String + String` is the only cross-type special case (concatenation).
 - Comparisons (`< > <= >=`) require matching numeric operands and yield `Boolean`; `==`/`!=` require matching types of any kind.
 - `if`/`elsif`/`while` conditions must be exactly `Boolean`.

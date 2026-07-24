@@ -1,6 +1,7 @@
 //! Static type checking pass over the AST.
 
 use crate::ast::{BinOp, Expr, Stmt, UnOp};
+use crate::env::Environment;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -89,12 +90,11 @@ struct ClassInfo {
     methods: HashMap<String, FunctionSig>,
 }
 
-struct Scope {
-    vars: HashMap<String, Type>,
-}
-
 pub struct TypeChecker {
-    scopes: Vec<Scope>,
+    /// Lexical scope stack mapping in-scope names to their static `Type`
+    /// (see [`Environment`]); the runtime interpreter uses the same structure
+    /// over `Value` instead.
+    env: Environment<Type>,
     functions: HashMap<String, FunctionSig>,
     classes: HashMap<String, ClassInfo>,
 }
@@ -108,9 +108,7 @@ impl Default for TypeChecker {
 impl TypeChecker {
     pub fn new() -> Self {
         TypeChecker {
-            scopes: vec![Scope {
-                vars: HashMap::new(),
-            }],
+            env: Environment::new(),
             functions: HashMap::new(),
             classes: HashMap::new(),
         }
@@ -358,11 +356,7 @@ impl TypeChecker {
     /// pre-declaring a class's field types so method bodies can read them
     /// like ordinary locals.
     fn declare_var(&mut self, name: &str, ty: Type) {
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .vars
-            .insert(name.to_string(), ty);
+        self.env.declare(name, ty);
     }
 
     /// Resolves a variable name to its declared `Type`, searching scopes
@@ -372,24 +366,22 @@ impl TypeChecker {
     /// scope currently on the stack, which callers turn into an "undefined
     /// variable" `TypeError`.
     fn lookup_var(&self, name: &str) -> Option<&Type> {
-        self.scopes.iter().rev().find_map(|s| s.vars.get(name))
+        self.env.lookup(name)
     }
 
-    /// Opens a new, empty scope on top of the `Vec<Scope>` stack. Called on
-    /// entry to a function/method body, or a `for` loop body, so that
-    /// variables declared inside don't leak into (or clash with) the
-    /// enclosing scope. Must be paired with a later `pop_scope`.
+    /// Opens a new, empty scope for a function/method body or a `for`-loop
+    /// body, so variables declared inside don't leak into (or clash with) the
+    /// enclosing scope. Must be paired with a later `pop_scope`. Delegates to
+    /// [`Environment::push_scope`].
     fn push_scope(&mut self) {
-        self.scopes.push(Scope {
-            vars: HashMap::new(),
-        });
+        self.env.push_scope();
     }
 
     /// Discards the innermost scope (and every variable declared in it),
-    /// restoring `lookup_var` resolution to whatever scope was active
-    /// before the matching `push_scope`.
+    /// restoring `lookup_var` resolution to whatever scope was active before
+    /// the matching `push_scope`. Delegates to [`Environment::pop_scope`].
     fn pop_scope(&mut self) {
-        self.scopes.pop();
+        self.env.pop_scope();
     }
 
     /// The main statement-level recursive check: one arm per `Stmt` variant.

@@ -1,6 +1,7 @@
 //! Tree-walk evaluator executing a typechecked AST.
 
 use crate::ast::{BinOp, Expr, Stmt, UnOp};
+use crate::env::Environment;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -140,13 +141,11 @@ enum Flow {
 }
 
 #[derive(Debug)]
-struct Scope {
-    vars: HashMap<String, Value>,
-}
-
-#[derive(Debug)]
 pub struct Interpreter {
-    scopes: Vec<Scope>,
+    /// Lexical scope stack mapping in-scope names to their runtime `Value`
+    /// (see [`Environment`]); the typechecker uses the same structure over
+    /// `Type` at check time.
+    env: Environment<Value>,
     functions: HashMap<String, FunctionDecl>,
     classes: HashMap<String, ClassDecl>,
     call_stack: Vec<StackFrame>,
@@ -161,9 +160,7 @@ impl Default for Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
-            scopes: vec![Scope {
-                vars: HashMap::new(),
-            }],
+            env: Environment::new(),
             functions: HashMap::new(),
             classes: HashMap::new(),
             call_stack: Vec::new(),
@@ -246,11 +243,7 @@ impl Interpreter {
     /// variables, and anywhere the language semantics say "this is a fresh
     /// local," as opposed to `set_var`'s "find and mutate" behavior.
     fn declare_var(&mut self, name: &str, value: Value) {
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .vars
-            .insert(name.to_string(), value);
+        self.env.declare(name, value);
     }
 
     /// Implements assignment (`x = value`, incl. `x = x + 1`). Walks the
@@ -264,13 +257,7 @@ impl Interpreter {
     /// brand-new variable in the current (innermost) scope — this is how a
     /// plain `x = 1` first introduces `x`.
     fn set_var(&mut self, name: &str, value: Value) {
-        for scope in self.scopes.iter_mut().rev() {
-            if scope.vars.contains_key(name) {
-                scope.vars.insert(name.to_string(), value);
-                return;
-            }
-        }
-        self.declare_var(name, value);
+        self.env.set_or_declare(name, value);
     }
 
     /// Reads a variable by walking the scope stack innermost-first, so a
@@ -278,19 +265,18 @@ impl Interpreter {
     /// no scope on the stack has bound `name` (the caller turns that into an
     /// "undefined variable" `RuntimeError`).
     fn lookup_var(&self, name: &str) -> Option<&Value> {
-        self.scopes.iter().rev().find_map(|s| s.vars.get(name))
+        self.env.lookup(name)
     }
 
-    /// Pushes a fresh, empty `Scope` onto the stack. Called around function
+    /// Pushes a fresh, empty scope onto the stack. Called around function
     /// bodies and `for` loop bodies to give them their own local namespace;
     /// `if`/`while`/`elsif`/`else` deliberately do *not* push a scope, so
     /// variables assigned inside them are visible (and, via `set_var`,
     /// mutate outer bindings) after the block ends — matching typical
-    /// Ruby-like block scoping rather than C-style brace scoping.
+    /// Ruby-like block scoping rather than C-style brace scoping. Delegates to
+    /// [`Environment::push_scope`].
     fn push_scope(&mut self) {
-        self.scopes.push(Scope {
-            vars: HashMap::new(),
-        });
+        self.env.push_scope();
     }
 
     /// Discards the innermost scope and everything declared in it. Must be
@@ -299,7 +285,7 @@ impl Interpreter {
     /// which is why sites like `Stmt::For` and `call_function` explicitly
     /// pop in each branch of a `match` rather than relying on RAII.
     fn pop_scope(&mut self) {
-        self.scopes.pop();
+        self.env.pop_scope();
     }
 
     /// Executes one statement and reports how control should continue via
@@ -708,7 +694,7 @@ impl Interpreter {
 
         {
             let mut fields_mut = fields.borrow_mut();
-            let current_scope = &self.scopes.last().unwrap().vars;
+            let current_scope = self.env.current();
             for (k, _) in &field_snapshot {
                 if let Some(updated) = current_scope.get(k) {
                     fields_mut.insert(k.clone(), updated.clone());
