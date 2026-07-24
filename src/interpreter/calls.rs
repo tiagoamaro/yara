@@ -87,6 +87,14 @@ impl Interpreter {
                 let ptr = self.eval_expr(&args[0])?;
                 let idx = match ptr {
                     Value::Pointer(i) => i,
+                    Value::Nil => {
+                        return Err(RuntimeError {
+                            message: "nil pointer dereference: `deref` on `nil`".to_string(),
+                            line,
+                            column,
+                            call_stack: self.call_stack.clone(),
+                        });
+                    }
                     other => {
                         return Err(RuntimeError {
                             message: format!("`deref` expects a pointer, found `{other}`"),
@@ -117,6 +125,14 @@ impl Interpreter {
                 let new_value = self.eval_expr(&args[1])?;
                 let idx = match ptr {
                     Value::Pointer(i) => i,
+                    Value::Nil => {
+                        return Err(RuntimeError {
+                            message: "nil pointer dereference: `set_deref` on `nil`".to_string(),
+                            line,
+                            column,
+                            call_stack: self.call_stack.clone(),
+                        });
+                    }
                     other => {
                         return Err(RuntimeError {
                             message: format!("`set_deref` expects a pointer, found `{other}`"),
@@ -149,6 +165,14 @@ impl Interpreter {
                 let ptr = self.eval_expr(&args[0])?;
                 let idx = match ptr {
                     Value::Pointer(i) => i,
+                    Value::Nil => {
+                        return Err(RuntimeError {
+                            message: "cannot `free` a nil pointer".to_string(),
+                            line,
+                            column,
+                            call_stack: self.call_stack.clone(),
+                        });
+                    }
                     other => {
                         return Err(RuntimeError {
                             message: format!("`free` expects a pointer, found `{other}`"),

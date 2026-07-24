@@ -32,14 +32,9 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             let mut stored_ty = value_ty.clone();
             if let Some(ann) = type_ann {
                 let declared = checker.resolve_type(&ann.name, ann.line, ann.column)?;
-                // `[]` (empty array literal) can't infer an element type on its
-                // own; check_expr reports it as `Array(Nil)` as a sentinel, which
-                // is compatible with any declared array type.
-                let empty_array_ok = matches!(
-                    (&declared, &value_ty),
-                    (Type::Array(_), Type::Array(elem)) if **elem == Type::Nil
-                );
-                if declared != value_ty && !empty_array_ok {
+                // `assignable` covers the two sanctioned mismatches: the `[]`
+                // empty-array sentinel and `nil` into a pointer type.
+                if !super::assignable(&declared, &value_ty) {
                     return Err(TypeError {
                         message: format!(
                             "type mismatch for `{name}`: declared `{declared}`, found `{value_ty}`"
@@ -182,7 +177,7 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             let field_ty =
                 super::classes::check_field_access(checker, object, field, *line, *column)?;
             let value_ty = super::exprs::check_expr(checker, value)?;
-            if field_ty != value_ty {
+            if !super::assignable(&field_ty, &value_ty) {
                 return Err(TypeError {
                     message: format!(
                         "cannot assign `{value_ty}` to field `{field}` of type `{field_ty}`"

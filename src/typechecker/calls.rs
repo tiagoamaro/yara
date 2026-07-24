@@ -86,7 +86,7 @@ pub(super) fn check_call(
     }
     for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
         let arg_ty = super::exprs::check_expr(checker, arg)?;
-        if arg_ty != *expected {
+        if !super::assignable(expected, &arg_ty) {
             return Err(TypeError {
                 message: format!("argument to `{callee}` expects `{expected}`, found `{arg_ty}`"),
                 line: arg.line(),
@@ -126,7 +126,7 @@ pub(super) fn check_call_args(
     }
     for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
         let arg_ty = super::exprs::check_expr(checker, arg)?;
-        if arg_ty != *expected {
+        if !super::assignable(expected, &arg_ty) {
             return Err(TypeError {
                 message: format!("argument to `{what}` expects `{expected}`, found `{arg_ty}`"),
                 line: arg.line(),
@@ -265,7 +265,7 @@ fn check_array_builtin(
             let ptr_ty = super::exprs::check_expr(checker, &args[0])?;
             let value_ty = super::exprs::check_expr(checker, &args[1])?;
             match ptr_ty {
-                Type::Pointer(elem) if *elem == value_ty => Ok(Some(Type::Nil)),
+                Type::Pointer(elem) if super::assignable(&elem, &value_ty) => Ok(Some(Type::Nil)),
                 Type::Pointer(elem) => Err(TypeError {
                     message: format!(
                         "`set_deref` into `Ptr<{elem}>` expects `{elem}`, found `{value_ty}`"

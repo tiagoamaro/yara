@@ -1,0 +1,5 @@
+runtime error: nil pointer dereference: `deref` on `nil`
+  --> examples/errors/nil_pointer_deref.yara:4:7
+  |
+4 | print(deref(p))
+  |       ^
