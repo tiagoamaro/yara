@@ -53,6 +53,20 @@ fn stage<T, E: Diagnostic>(result: Result<T, E>, path: &str, source: &str) -> T 
     }
 }
 
+/// [`stage`] for the pipeline stages that run *after* imports are spliced in
+/// (resolving itself, typechecking, interpretation): renders through the
+/// resolver-built [`diagnostics::SourceMap`] so a position belonging to an
+/// imported file gets that file's path/line/snippet, not the entry file's.
+fn stage_mapped<T, E: Diagnostic>(result: Result<T, E>, map: &diagnostics::SourceMap) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => {
+            eprint!("{}", diagnostics::render_with_map(&err, map));
+            std::process::exit(1);
+        }
+    }
+}
+
 /// Runs the full pipeline on the file at `path`: read the source, then in
 /// order [`Lexer`] -> [`Parser`] -> [`resolver::resolve_imports`] ->
 /// [`TypeChecker`] -> [`Interpreter`]. Each fallible stage is wrapped in
@@ -99,11 +113,11 @@ fn run_file(path: &str, keywords_path: Option<&str>) {
         &source,
     );
     let program = stage(Parser::new(tokens).parse_program(), path, &source);
-    let program = stage(
-        resolver::resolve_imports(program, std::path::Path::new(path)),
-        path,
-        &source,
+    let mut map = diagnostics::SourceMap::new(path, &source);
+    let program = stage_mapped(
+        resolver::resolve_imports(program, std::path::Path::new(path), &mut map),
+        &map,
     );
-    stage(TypeChecker::new().check_program(&program), path, &source);
-    stage(Interpreter::new().run_program(&program), path, &source);
+    stage_mapped(TypeChecker::new().check_program(&program), &map);
+    stage_mapped(Interpreter::new().run_program(&program), &map);
 }

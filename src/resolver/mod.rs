@@ -2,6 +2,7 @@
 //! top-level statements in place, before typechecking/interpretation ever run.
 
 use crate::ast::Stmt;
+use crate::diagnostics::SourceMap;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use std::collections::HashSet;
@@ -45,12 +46,24 @@ impl crate::diagnostics::Diagnostic for ResolveError {
 /// cycle-detection set with `current_file`'s own canonicalized path, so that
 /// a chain of imports that eventually re-imports the entry file itself is
 /// caught as a cycle, not just cycles among the imported files.
-pub fn resolve_imports(program: Vec<Stmt>, current_file: &Path) -> Result<Vec<Stmt>, ResolveError> {
+///
+/// `map` must be a [`SourceMap`] seeded with the entry file
+/// (`SourceMap::new(path, source)`): every imported file is registered in it
+/// and that file's spliced statements have their line numbers shifted into
+/// the file's assigned virtual range ([`Stmt::shift_lines`]), so any later
+/// diagnostic can be resolved back to the right file/line/snippet via
+/// `SourceMap::lookup`. Callers that don't render diagnostics (tests) can
+/// pass a throwaway map.
+pub fn resolve_imports(
+    program: Vec<Stmt>,
+    current_file: &Path,
+    map: &mut SourceMap,
+) -> Result<Vec<Stmt>, ResolveError> {
     let mut visited = HashSet::new();
     if let Ok(canonical) = current_file.canonicalize() {
         visited.insert(canonical);
     }
-    resolve(program, current_file, &mut visited)
+    resolve(program, current_file, &mut visited, map)
 }
 
 /// Recursive worker behind [`resolve_imports`]. Walks `program`'s top-level
@@ -70,6 +83,7 @@ fn resolve(
     program: Vec<Stmt>,
     current_file: &Path,
     visited: &mut HashSet<PathBuf>,
+    map: &mut SourceMap,
 ) -> Result<Vec<Stmt>, ResolveError> {
     let mut resolved = Vec::with_capacity(program.len());
     for stmt in program {
@@ -99,7 +113,7 @@ fn resolve(
                     line,
                     column,
                 })?;
-                let imported_program =
+                let mut imported_program =
                     Parser::new(tokens)
                         .parse_program()
                         .map_err(|e| ResolveError {
@@ -108,7 +122,16 @@ fn resolve(
                             column,
                         })?;
 
-                let nested = resolve(imported_program, &target, visited)?;
+                // Register the file in the source map and shift its AST
+                // positions into the virtual line range it was assigned, so
+                // diagnostics raised later inside these statements point back
+                // at this file, not the entry file.
+                let offset = map.add_file(target.display().to_string(), source);
+                for stmt in &mut imported_program {
+                    stmt.shift_lines(offset);
+                }
+
+                let nested = resolve(imported_program, &target, visited, map)?;
                 resolved.extend(nested);
             }
             other => resolved.push(other),
@@ -169,12 +192,22 @@ mod tests {
         );
         let main_path = write_temp(&dir, "main.yara", "import \"helper\"\nx = add(1, 2)");
 
-        let program = parse_src(&std::fs::read_to_string(&main_path).unwrap());
-        let resolved = resolve_imports(program, &main_path).unwrap();
+        let main_src = std::fs::read_to_string(&main_path).unwrap();
+        let program = parse_src(&main_src);
+        let mut map = SourceMap::new(main_path.to_str().unwrap(), &main_src);
+        let resolved = resolve_imports(program, &main_path, &mut map).unwrap();
 
         assert_eq!(resolved.len(), 2);
         assert!(matches!(resolved[0], Stmt::FunctionDef { .. }));
         assert!(matches!(resolved[1], Stmt::VarDecl { .. }));
+
+        // The imported function's lines must be shifted past the entry file's
+        // 2 lines (helper's `def` is local line 1 -> virtual line 3), while
+        // the entry file's own statement keeps its natural line.
+        assert_eq!(resolved[0].line(), 3);
+        assert_eq!(resolved[1].line(), 2);
+        // And the map must resolve the shifted line back to the helper file.
+        assert!(map.lookup(3).path.ends_with("helper.yara"));
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -190,8 +223,10 @@ mod tests {
         write_temp(&dir, "b.yara", a_reimport);
         let main_path = write_temp(&dir, "main.yara", "import \"a\"");
 
-        let program = parse_src(&std::fs::read_to_string(&main_path).unwrap());
-        let err = resolve_imports(program, &main_path).unwrap_err();
+        let main_src = std::fs::read_to_string(&main_path).unwrap();
+        let program = parse_src(&main_src);
+        let mut map = SourceMap::new(main_path.to_str().unwrap(), &main_src);
+        let err = resolve_imports(program, &main_path, &mut map).unwrap_err();
         assert!(err.message.contains("cycle"));
 
         std::fs::remove_dir_all(&dir).ok();
@@ -207,8 +242,10 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let main_path = write_temp(&dir, "main.yara", "import \"does_not_exist\"");
 
-        let program = parse_src(&std::fs::read_to_string(&main_path).unwrap());
-        let err = resolve_imports(program, &main_path).unwrap_err();
+        let main_src = std::fs::read_to_string(&main_path).unwrap();
+        let program = parse_src(&main_src);
+        let mut map = SourceMap::new(main_path.to_str().unwrap(), &main_src);
+        let err = resolve_imports(program, &main_path, &mut map).unwrap_err();
         assert_eq!(err.line, 1);
         assert_eq!(err.column, 1);
 
