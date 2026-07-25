@@ -529,6 +529,13 @@ pub enum Stmt {
     ClassDef {
         /// The class's name.
         name: String,
+        /// Optional single parent class name, from `class Name < Parent`.
+        /// `None` for a class with no parent. Fields and methods are
+        /// inherited by flattening the parent's `ClassInfo`/`ClassDecl`
+        /// into the child's at registration time (typechecker/interpreter),
+        /// so this string is only consulted there, at parse-time-adjacent
+        /// stages (resolver) it is inert.
+        parent: Option<String>,
         /// The class's constant declarations; every element is a
         /// `Stmt::ConstDecl`.
         consts: Vec<Stmt>,
