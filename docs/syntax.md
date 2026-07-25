@@ -91,7 +91,38 @@ h.count = 10               # field write
 print(h.area(2.0))         # method call
 ```
 
-No inheritance, no class-level/static methods other than `.new`, no visibility modifiers — everything is public. Inside a method body, bare names resolve first to locals/params, then to the instance's own fields/consts (implicit `self`, no `self.`/`@` sigil needed) — this is why `count = number` inside `initializer` sets the instance variable rather than creating a local. Instance vars declared with no value (`count: Integer`) start out effectively unset until a method assigns them; reading one before that happens is a latent gap (see `src/typechecker/CLAUDE.md`). A class name doubles as its own type annotation (`h: Hello = ...`). Class instances have reference semantics like arrays: assigning `a = b` (both `Hello`) makes `a`/`b` alias the same instance.
+No class-level/static methods other than `.new`, no visibility modifiers — everything is public. Inside a method body, bare names resolve first to locals/params, then to the instance's own fields/consts (implicit `self`, no `self.`/`@` sigil needed) — this is why `count = number` inside `initializer` sets the instance variable rather than creating a local. There is no `self` *expression*, though — a method can't call one of its own class's other methods without a receiver, so intra-class method calls aren't possible yet (see `src/interpreter/CLAUDE.md`). Instance vars declared with no value (`count: Integer`) start out effectively unset until a method assigns them; reading one before that happens is a latent gap (see `src/typechecker/CLAUDE.md`). A class name doubles as its own type annotation (`h: Hello = ...`). Class instances have reference semantics like arrays: assigning `a = b` (both `Hello`) makes `a`/`b` alias the same instance.
+
+### Inheritance
+
+```
+class Animal
+  name: String
+
+  def initializer(animal_name: Str)
+    name = animal_name
+  end
+
+  def speak(): Str
+    "..."
+  end
+end
+
+class Dog < Animal
+  breed: String
+
+  def initializer(dog_name: Str, dog_breed: Str)
+    name = dog_name    # inherited field — must be assigned here, no `super`
+    breed = dog_breed
+  end
+
+  def speak(): Str      # overrides Animal.speak
+    "Woof"
+  end
+end
+```
+
+Single parent only (`class Child < Parent`), fields and methods inherit, no `super`, no override keyword — a child member with the same name as a parent's implicitly overrides it. Implemented by *flattening*: at class-registration time the parent's fields/methods are merged into the child's class table entry (typechecker `ClassInfo`, interpreter `ClassDecl`), so every other class feature (field access, method dispatch, `.new`) works against the child's table unchanged. Because there's no `super`, the child's `initializer` must assign every inherited non-defaulted field itself (the existing definite-assignment check now walks the parent chain too) — see `examples/objects/inheritance.yara` and the error example `examples/errors/class_inherited_field_unassigned.yara`. Unknown parent names and inheritance cycles (`A < B < A`) are typecheck-time errors.
 
 ## Pointers
 

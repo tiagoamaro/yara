@@ -3,7 +3,7 @@
 Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
 
 ## Status
-All fifteen verified against the actual binary (2026-07-24) after the pointer and nullable-pointer features landed; output below is real, not illustrative.
+All sixteen verified against the actual binary (2026-07-25) after class inheritance landed; output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -108,6 +108,14 @@ All fifteen verified against the actual binary (2026-07-24) after the pointer an
     --> examples/errors/class_unassigned_field.yara:2:3
     |
   2 |   count: Integer
+    |   ^
+  ```
+- `class_inherited_field_unassigned.yara` — a `Dog < Animal` child's `initializer` never assigns the inherited `name` field; no `super` means the child must assign every inherited field itself. The error points at the field's *original* declaration in the parent:
+  ```
+  type error: field `name` of class `Dog` is never assigned in `initializer` (it would be `Nil` at runtime, not `String`)
+    --> examples/errors/class_inherited_field_unassigned.yara:5:3
+    |
+  5 |   name: String
     |   ^
   ```
 - `use_after_free.yara` — attempts to dereference a pointer after it has been freed (caught at runtime):

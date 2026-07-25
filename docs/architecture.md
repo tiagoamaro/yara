@@ -74,7 +74,7 @@ Type annotations in declarations are parsed by `parse_type_annotation`, which is
 
 ```mermaid
 flowchart TD
-    A["check_program(&[Stmt])"] --> B["collect_classes\n(2 passes: register names,\nthen fill fields/methods)"]
+    A["check_program(&[Stmt])"] --> B["collect_classes\n(3 passes: register names,\nfill own fields/methods,\nflatten_inheritance)"]
     B --> C["collect_function_signatures\n(pre-pass so call order\ndoesn't matter)"]
     C --> D["check_classes\n(type-checks every method body,\nfields pre-declared = implicit self)"]
     D --> E["check_stmt for every\ntop-level statement"]
@@ -82,6 +82,8 @@ flowchart TD
 ```
 
 The two-pass class collection matters for a subtle reason: a class's field/param/return annotations might name *another* class (or itself), so every class name has to exist in `self.classes` before any class's fields are actually type-resolved — otherwise declaration order would matter, which would be surprising.
+
+**Inheritance (`class Child < Parent`)** adds a third pass, `flatten_inheritance`, after the own-fields/own-methods pass: it builds a `child -> parent` map from each `ClassDef.parent`, rejects unknown parents and inheritance cycles (`A < B < A`) as typecheck errors, then walks classes in parent-first topological order merging each parent's already-flattened `fields`/`methods` into the child's own maps — child entries win on a name clash (implicit override, no keyword). Because this happens before `check_classes`, every downstream check (`check_field_access`, `check_method_call`, `check_fields_assigned_in_initializer`) sees a fully flattened `ClassInfo` and needs no inheritance-specific logic — the one exception is that `check_fields_assigned_in_initializer` now walks the parent chain to find each inherited field's original declaration span (for the error message), since there's no `super` to assign them implicitly. The interpreter mirrors this exact scheme on its own `ClassDecl` table (`const_inits`/`field_names`/`methods`) in `run_program`'s registration pass, so `construct`/`call_method`/`run_method` are equally untouched.
 
 `check_body_return_type`/`check_tail_stmt` implement Ruby-style implicit last-expression return, including the trickiest part: a trailing `if`/`elsif`/`else` is itself a tail expression, so `factorial`'s whole body (an `if`/`else` with no statement after it) can be its return value — each branch's own tail type is computed recursively and all branches present must agree.
 
