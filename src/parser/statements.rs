@@ -176,6 +176,15 @@ impl Parser {
         let class_tok = self.advance();
         let (name, _, _) = self.expect_ident()?;
 
+        // Check for optional parent class: `class Child < Parent`
+        let parent = if self.check(&TokenKind::Lt) {
+            self.advance();
+            let (parent_name, _, _) = self.expect_ident()?;
+            Some(parent_name)
+        } else {
+            None
+        };
+
         let mut consts = Vec::new();
         let mut fields = Vec::new();
         let mut methods = Vec::new();
@@ -219,6 +228,7 @@ impl Parser {
 
         Ok(Stmt::ClassDef {
             name,
+            parent,
             consts,
             fields,
             methods,

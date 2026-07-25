@@ -449,6 +449,44 @@ mod tests {
     }
 
     #[test]
+    fn parses_class_with_parent() {
+        let stmts = parse("class Child < Parent\n  x: Integer\nend");
+        match &stmts[0] {
+            Stmt::ClassDef {
+                name,
+                parent,
+                fields,
+                ..
+            } => {
+                assert_eq!(name, "Child");
+                assert_eq!(parent, &Some("Parent".to_string()));
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0].name, "x");
+            }
+            other => panic!("expected ClassDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_class_without_parent_is_none() {
+        let stmts = parse("class Simple\n  y: Boolean\nend");
+        match &stmts[0] {
+            Stmt::ClassDef {
+                name,
+                parent,
+                fields,
+                ..
+            } => {
+                assert_eq!(name, "Simple");
+                assert_eq!(parent, &None);
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0].name, "y");
+            }
+            other => panic!("expected ClassDef, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parses_new_field_access_and_method_call() {
         let stmts = parse("h = Hello.new(5)\nx = h.count\nh.greet(\"hi\")\nh.count = 9");
         match &stmts[0] {
