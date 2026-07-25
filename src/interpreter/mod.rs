@@ -185,15 +185,19 @@ impl Interpreter {
         }
     }
 
-    /// Runs a whole program in two passes, mirroring how the typechecker
+    /// Runs a whole program in three passes, mirroring how the typechecker
     /// resolves forward references. Pass 1: walk every top-level statement
     /// and register `Stmt::FunctionDef`/`Stmt::ClassDef` into `self.functions`
     /// / `self.classes` without executing anything else — this is why a
     /// function can call another function defined later in the same file, or
-    /// a class can reference itself. Pass 2: execute each top-level statement
-    /// in source order (function/class defs are no-ops the second time
-    /// around, see their `exec_stmt` arms).
+    /// a class can reference itself. Pass 2: flatten class inheritance by
+    /// merging parent fields, consts, and methods into each child (the
+    /// typechecker validates unknown parents and cycles before the interpreter
+    /// runs, so we can safely assume all parent references are valid here).
+    /// Pass 3: execute each top-level statement in source order (function/class
+    /// defs are no-ops the second time around, see their `exec_stmt` arms).
     pub fn run_program(&mut self, program: &[Stmt]) -> Result<(), RuntimeError> {
+        // Pass 1: register functions and unflattened classes
         for stmt in program {
             if let Stmt::FunctionDef {
                 name, params, body, ..
@@ -248,10 +252,96 @@ impl Interpreter {
                 );
             }
         }
+
+        // Pass 2: flatten class inheritance
+        self.flatten_classes(program)?;
+
+        // Pass 3: execute statements
         for stmt in program {
             self.exec_stmt(stmt)?;
         }
         Ok(())
+    }
+
+    /// Flattens class inheritance by merging parent fields, consts, and methods
+    /// into each child class. Assumes the typechecker has already validated that
+    /// all parent references are valid and no cycles exist (typechecker runs
+    /// before interpreter in the main pipeline).
+    fn flatten_classes(&mut self, program: &[Stmt]) -> Result<(), RuntimeError> {
+        // Build a map of class name -> parent name (or None if no parent)
+        let parent_map: std::collections::HashMap<String, Option<String>> = program
+            .iter()
+            .filter_map(|stmt| {
+                if let Stmt::ClassDef { name, parent, .. } = stmt {
+                    Some((name.clone(), parent.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Flatten each class by recursively merging its parent's fields/consts/methods
+        let mut flattened = std::collections::HashMap::new();
+        let mut visited = std::collections::HashSet::new();
+
+        for class_name in parent_map.keys() {
+            self.flatten_class_recursive(class_name, &parent_map, &mut flattened, &mut visited);
+        }
+
+        self.classes = flattened;
+        Ok(())
+    }
+
+    /// Recursively flattens a single class by visiting its parent first,
+    /// then merging the parent's flattened fields/consts/methods into the child.
+    fn flatten_class_recursive(
+        &self,
+        class_name: &str,
+        parent_map: &std::collections::HashMap<String, Option<String>>,
+        flattened: &mut std::collections::HashMap<String, ClassDecl>,
+        visited: &mut std::collections::HashSet<String>,
+    ) {
+        // Avoid infinite recursion on cycles (though typechecker should have
+        // already ruled these out)
+        if visited.contains(class_name) {
+            return;
+        }
+        visited.insert(class_name.to_string());
+
+        // If this class has a parent, flatten the parent first
+        if let Some(Some(parent_name)) = parent_map.get(class_name) {
+            self.flatten_class_recursive(parent_name, parent_map, flattened, visited);
+        }
+
+        // Now flatten this class by merging parent (if any) into it
+        let mut class_decl = self.classes[class_name].clone();
+
+        if let Some(Some(parent_name)) = parent_map.get(class_name) {
+            // Parent has already been flattened, grab it from flattened map
+            if let Some(parent_decl) = flattened.get(parent_name) {
+                // Prepend parent's field_names to child's field_names
+                // (parent fields should come first so they're initialized first)
+                let mut merged_field_names = parent_decl.field_names.clone();
+                merged_field_names.extend(class_decl.field_names);
+                class_decl.field_names = merged_field_names;
+
+                // Prepend parent's const_inits to child's const_inits
+                // (parent consts evaluate first, child wins if names clash)
+                let mut merged_const_inits = parent_decl.const_inits.clone();
+                merged_const_inits.extend(class_decl.const_inits);
+                class_decl.const_inits = merged_const_inits;
+
+                // Merge parent's methods into child's methods
+                // (child methods override parent methods of the same name)
+                let mut merged_methods = parent_decl.methods.clone();
+                for (method_name, method_decl) in class_decl.methods {
+                    merged_methods.insert(method_name, method_decl);
+                }
+                class_decl.methods = merged_methods;
+            }
+        }
+
+        flattened.insert(class_name.to_string(), class_decl);
     }
 
     /// Unconditionally inserts `name` into the *innermost* (last) scope,
