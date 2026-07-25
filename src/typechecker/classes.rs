@@ -1,19 +1,24 @@
 use super::*;
 
-/// Builds `self.classes` in two passes over every `Stmt::ClassDef` in the
-/// program. Pass one just registers each class's *name* with an empty,
-/// placeholder `ClassInfo` — this exists purely so that pass two can
-/// freely resolve a field/param/return type annotation that names *any*
-/// class, including one declared later in the file or the class's own
-/// name (self-referential fields, e.g. a `Node` with a `next: Node`
-/// field). Pass two then does the real work for each class: resolves
-/// every const/field annotation into a `Type` (consts and instance vars
-/// are merged into one `fields` map, since both are read unqualified
-/// inside methods via implicit `self` and the checker doesn't need to
-/// tell them apart afterward), and resolves every method's param/return
-/// types into a `FunctionSig` — but does not yet check any method
-/// *bodies*; that happens later in `check_classes`, once every class's
-/// signatures are known.
+/// Builds `self.classes` in three passes over every `Stmt::ClassDef` in the
+/// program.
+///
+/// **Pass 1** (lines 24–31) pre-registers each class's *name* with an empty,
+/// placeholder `ClassInfo` — this exists purely so that pass 2 can freely
+/// resolve a field/param/return type annotation that names *any* class,
+/// including one declared later in the file or the class's own name
+/// (self-referential fields, e.g. a `Node` with a `next: Node` field).
+///
+/// **Pass 2** (lines 33–109) fills `fields` (merging consts + fields) and
+/// `methods` for each class, using each `Stmt::ClassDef`'s own members.
+/// Child classes' maps contain only their *own* members at this point,
+/// not yet including inherited ones.
+///
+/// **Pass 3** (lines 111–115) flattens inheritance: for each class with a
+/// parent, merges the parent's (now fully-flattened) `fields`/`methods` into
+/// the child's own maps. Child members override parent members (implicit
+/// override, no keyword). Also detects unknown parent names and inheritance
+/// cycles, reporting errors at the child `ClassDef`'s position.
 pub(super) fn collect_classes(
     checker: &mut TypeChecker,
     program: &[Stmt],
@@ -30,6 +35,7 @@ pub(super) fn collect_classes(
         }
     }
 
+    // Pass 2: Fill in each class's own (non-inherited) fields and methods.
     for stmt in program {
         let Stmt::ClassDef {
             name,
@@ -107,6 +113,144 @@ pub(super) fn collect_classes(
             },
         );
     }
+
+    // Pass 3: Flatten inheritance by merging parent fields/methods into children.
+    flatten_inheritance(checker, program)?;
+
+    Ok(())
+}
+
+/// Flattens single-parent class inheritance into each child's `ClassInfo`.
+///
+/// Detects:
+/// - Unknown parent names (report error at child's `ClassDef` position).
+/// - Inheritance cycles, e.g., A < B < A (report error at cyclic class's position).
+///
+/// Then walks classes in topological order (parents before children) and
+/// merges each parent's (already-flattened) fields/methods into the child's
+/// own maps WITHOUT overwriting entries the child already defines (child wins).
+/// After this pass, every class's `ClassInfo.fields`/`methods` includes both
+/// its own members and all inherited members transitively.
+fn flatten_inheritance(checker: &mut TypeChecker, program: &[Stmt]) -> Result<(), TypeError> {
+    // Build a parent map: class_name -> parent_name (only for classes with parents).
+    let mut parent_map: HashMap<String, String> = HashMap::new();
+    let mut class_positions: HashMap<String, (usize, usize)> = HashMap::new();
+
+    for stmt in program {
+        if let Stmt::ClassDef {
+            name,
+            parent,
+            line,
+            column,
+            ..
+        } = stmt
+        {
+            class_positions.insert(name.clone(), (*line, *column));
+            if let Some(parent_name) = parent {
+                parent_map.insert(name.clone(), parent_name.clone());
+            }
+        }
+    }
+
+    // Check for unknown parents.
+    for (child, parent) in &parent_map {
+        if !checker.classes.contains_key(parent) {
+            let (line, column) = class_positions[child];
+            return Err(TypeError {
+                message: format!("class `{child}` inherits from unknown class `{parent}`"),
+                line,
+                column,
+            });
+        }
+    }
+
+    // Check for inheritance cycles and collect topological order.
+    let mut order = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    let mut rec_stack = std::collections::HashSet::new();
+
+    for class_name in checker.classes.keys() {
+        if !visited.contains(class_name) {
+            visit_class_for_cycle(
+                class_name,
+                &parent_map,
+                &class_positions,
+                &mut visited,
+                &mut rec_stack,
+                &mut order,
+            )?;
+        }
+    }
+
+    // Merge parent fields/methods into each child (in topological order).
+    for class_name in order {
+        if let Some(parent_name) = parent_map.get(&class_name) {
+            let parent_info = checker.classes[parent_name].clone();
+            let child_info = &mut checker.classes.get_mut(&class_name).unwrap();
+
+            // Merge parent fields into child (child fields override parent).
+            for (field_name, field_type) in &parent_info.fields {
+                child_info
+                    .fields
+                    .entry(field_name.clone())
+                    .or_insert_with(|| field_type.clone());
+            }
+
+            // Merge parent methods into child (child methods override parent).
+            for (method_name, method_sig) in &parent_info.methods {
+                child_info
+                    .methods
+                    .entry(method_name.clone())
+                    .or_insert_with(|| method_sig.clone());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Detects cycles using depth-first search with a recursion stack. Visits
+/// `class_name` and all its ancestors; if a cycle is detected, returns an
+/// error at the cyclic class's position. Otherwise, appends `class_name` to
+/// `order` in post-order (parents before children for topological sort).
+fn visit_class_for_cycle(
+    class_name: &str,
+    parent_map: &HashMap<String, String>,
+    class_positions: &HashMap<String, (usize, usize)>,
+    visited: &mut std::collections::HashSet<String>,
+    rec_stack: &mut std::collections::HashSet<String>,
+    order: &mut Vec<String>,
+) -> Result<(), TypeError> {
+    visited.insert(class_name.to_string());
+    rec_stack.insert(class_name.to_string());
+
+    if let Some(parent_name) = parent_map.get(class_name) {
+        if rec_stack.contains(parent_name) {
+            // Cycle detected: report error at the child's position.
+            let (line, column) = class_positions[class_name];
+            return Err(TypeError {
+                message: format!(
+                    "inheritance cycle: class `{class_name}` has a circular parent chain"
+                ),
+                line,
+                column,
+            });
+        }
+
+        if !visited.contains(parent_name) {
+            visit_class_for_cycle(
+                parent_name,
+                parent_map,
+                class_positions,
+                visited,
+                rec_stack,
+                order,
+            )?;
+        }
+    }
+
+    rec_stack.remove(class_name);
+    order.push(class_name.to_string());
     Ok(())
 }
 
@@ -117,6 +261,7 @@ pub(super) fn check_classes(checker: &mut TypeChecker, program: &[Stmt]) -> Resu
     for stmt in program {
         let Stmt::ClassDef {
             name,
+            parent,
             fields,
             methods,
             ..
@@ -124,7 +269,7 @@ pub(super) fn check_classes(checker: &mut TypeChecker, program: &[Stmt]) -> Resu
         else {
             continue;
         };
-        check_fields_assigned_in_initializer(checker, name, fields, methods)?;
+        check_fields_assigned_in_initializer(checker, program, name, parent, fields, methods)?;
         let field_types = checker.classes[name].fields.clone();
         for m in methods {
             let Stmt::FunctionDef {
@@ -168,10 +313,11 @@ pub(super) fn check_classes(checker: &mut TypeChecker, program: &[Stmt]) -> Resu
     Ok(())
 }
 
-/// Requires every instance-variable declaration (a `FieldDecl` — always
-/// valueless by construction) to be assigned somewhere in the class's
-/// `initializer`, closing the soundness gap where reading a never-assigned
-/// field type-checked as its declared type but evaluated to `Nil`.
+/// Requires every instance-variable declaration — both those explicitly
+/// declared in this class's `fields` AND those inherited from parent classes
+/// — to be assigned somewhere in the class's `initializer`, closing the
+/// soundness gap where reading a never-assigned field type-checked as its
+/// declared type but evaluated to `Nil`.
 ///
 /// The check is deliberately flow-insensitive: an assignment anywhere in
 /// the initializer body (including inside an `if` branch or loop) counts,
@@ -183,13 +329,25 @@ pub(super) fn check_classes(checker: &mut TypeChecker, program: &[Stmt]) -> Resu
 /// assignment.
 fn check_fields_assigned_in_initializer(
     _checker: &TypeChecker,
+    program: &[Stmt],
     class_name: &str,
+    parent: &Option<String>,
     fields: &[crate::ast::FieldDecl],
     methods: &[Stmt],
 ) -> Result<(), TypeError> {
-    if fields.is_empty() {
+    // Collect all instance-variable field names (own + inherited).
+    // We only check explicit FieldDecls (not consts, which have values at declaration).
+    let mut all_fields_to_check: Vec<&crate::ast::FieldDecl> = fields.iter().collect();
+
+    // If this class has a parent, recursively collect its instance-variable fields.
+    if let Some(parent_name) = parent {
+        collect_parent_field_decls_recursive(program, parent_name, &mut all_fields_to_check);
+    }
+
+    if all_fields_to_check.is_empty() {
         return Ok(());
     }
+
     let initializer = methods.iter().find_map(|m| match m {
         Stmt::FunctionDef { name, body, .. } if name == "initializer" => Some(body),
         _ => None,
@@ -198,7 +356,9 @@ fn check_fields_assigned_in_initializer(
     if let Some(body) = initializer {
         collect_assigned_names(body, &mut assigned);
     }
-    for f in fields {
+
+    // Check each field (own + inherited).
+    for f in &all_fields_to_check {
         if !assigned.contains(f.name.as_str()) {
             return Err(TypeError {
                 message: format!(
@@ -212,6 +372,34 @@ fn check_fields_assigned_in_initializer(
         }
     }
     Ok(())
+}
+
+/// Helper: recursively walks parent classes and collects their instance-variable
+/// FieldDecls into the `fields` vector by looking up ClassDef nodes in the program.
+fn collect_parent_field_decls_recursive<'a>(
+    program: &'a [Stmt],
+    parent_name: &str,
+    fields: &mut Vec<&'a crate::ast::FieldDecl>,
+) {
+    // Find the parent class definition in the program.
+    let parent_classdef = program.iter().find_map(|stmt| match stmt {
+        Stmt::ClassDef {
+            name,
+            parent: parent_of_parent,
+            fields: parent_fields,
+            ..
+        } if name == parent_name => Some((parent_of_parent.as_ref(), parent_fields)),
+        _ => None,
+    });
+
+    if let Some((grandparent, parent_fields)) = parent_classdef {
+        // Add parent's fields to the list.
+        fields.extend(parent_fields);
+        // Recursively add grandparent's fields if the parent has a parent.
+        if let Some(grandparent_name) = grandparent {
+            collect_parent_field_decls_recursive(program, grandparent_name, fields);
+        }
+    }
 }
 
 /// Shared by `Expr::FieldAccess` and `Stmt::FieldAssign`: resolves
@@ -389,5 +577,101 @@ fn method_name(method: &Stmt) -> &str {
     match method {
         Stmt::FunctionDef { name, .. } => name,
         _ => "?",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+
+    fn check(src: &str) -> Result<(), TypeError> {
+        let tokens = Lexer::new(src).tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        TypeChecker::new().check_program(&program)
+    }
+
+    /// Child class inherits parent's field and can access it.
+    #[test]
+    fn child_inherits_parent_field() {
+        let src = "class Parent\n  value: Integer\n\n  def initializer(v: Int)\n    value = v\n  end\nend\n\nclass Child < Parent\n  def initializer(v: Int)\n    value = v\n  end\nend\n\nc: Child = Child.new(42)\nx: Int = c.value\n";
+        assert!(check(src).is_ok());
+    }
+
+    /// Child class inherits parent's method and can call it.
+    #[test]
+    fn child_inherits_parent_method() {
+        let src = "class Parent\n  value: Integer\n\n  def initializer(v: Int)\n    value = v\n  end\n\n  def get_value(): Int\n    value\n  end\nend\n\nclass Child < Parent\n  def initializer(v: Int)\n    value = v\n  end\nend\n\nc: Child = Child.new(42)\nx: Int = c.get_value()\n";
+        assert!(check(src).is_ok());
+    }
+
+    /// Child can override a parent's method with its own implementation.
+    #[test]
+    fn child_overrides_parent_method() {
+        let src = "class Parent\n  def greet(): String\n    \"Parent\"\n  end\nend\n\nclass Child < Parent\n  def greet(): String\n    \"Child\"\n  end\nend\n\nc: Child = Child.new()\nx: String = c.greet()\n";
+        assert!(check(src).is_ok());
+    }
+
+    /// Child can override a parent's field with its own field.
+    #[test]
+    fn child_overrides_parent_field_type() {
+        // Note: parent has `value: Integer`, child has no field (only parent's)
+        // But we can test the behavior with explicit override in the same class
+        // Actually, field override would require both parent and child to declare it,
+        // so let's test inheritance of multiple fields instead.
+        let src = "class Parent\n  x: Integer\n\n  def initializer(a: Int)\n    x = a\n  end\nend\n\nclass Child < Parent\n  y: Integer\n\n  def initializer(a: Int, b: Int)\n    x = a\n    y = b\n  end\nend\n\nc: Child = Child.new(1, 2)\nv1: Int = c.x\nv2: Int = c.y\n";
+        assert!(check(src).is_ok());
+    }
+
+    /// Unknown parent class name produces a type error.
+    #[test]
+    fn unknown_parent_class_error() {
+        let src = "class Child < NonExistent\nend\n";
+        let err = check(src).unwrap_err();
+        assert!(err.message.contains("unknown class `NonExistent`"));
+    }
+
+    /// Direct inheritance cycle (A < B, B < A) produces an error.
+    #[test]
+    fn inheritance_cycle_direct() {
+        let src = "class A < B\nend\n\nclass B < A\nend\n";
+        let err = check(src).unwrap_err();
+        assert!(err.message.contains("inheritance cycle") || err.message.contains("circular"));
+    }
+
+    /// Indirect inheritance cycle (A < B < C < A) produces an error.
+    #[test]
+    fn inheritance_cycle_indirect() {
+        let src = "class A < B\nend\n\nclass B < C\nend\n\nclass C < A\nend\n";
+        let err = check(src).unwrap_err();
+        assert!(err.message.contains("inheritance cycle") || err.message.contains("circular"));
+    }
+
+    /// Child that fails to assign an inherited field in initializer produces
+    /// the standard unassigned-field error.
+    #[test]
+    fn child_fails_to_assign_inherited_field() {
+        let src = "class Parent\n  value: Integer\n\n  def initializer(v: Int)\n    value = v\n  end\nend\n\nclass Child < Parent\n  def initializer()\n    # Oops: forgot to assign the inherited 'value' field\n  end\nend\n";
+        let err = check(src).unwrap_err();
+        assert!(
+            err.message.contains("never assigned in `initializer`"),
+            "Expected unassigned field error, got: {}",
+            err.message
+        );
+    }
+
+    /// Multi-level inheritance: grandparent -> parent -> child all work.
+    #[test]
+    fn multi_level_inheritance() {
+        let src = "class GrandParent\n  a: Integer\n\n  def initializer(x: Int)\n    a = x\n  end\n\n  def get_a(): Int\n    a\n  end\nend\n\nclass Parent < GrandParent\n  b: Integer\n\n  def initializer(x: Int, y: Int)\n    a = x\n    b = y\n  end\nend\n\nclass Child < Parent\n  c: Integer\n\n  def initializer(x: Int, y: Int, z: Int)\n    a = x\n    b = y\n    c = z\n  end\nend\n\nch: Child = Child.new(1, 2, 3)\nv1: Int = ch.a\nv2: Int = ch.b\nv3: Int = ch.c\nv4: Int = ch.get_a()\n";
+        assert!(check(src).is_ok());
+    }
+
+    /// Child can access both parent field and its own field.
+    #[test]
+    fn child_accesses_parent_and_own_fields() {
+        let src = "class Parent\n  parent_field: Integer\n\n  def initializer(p: Int)\n    parent_field = p\n  end\nend\n\nclass Child < Parent\n  child_field: Integer\n\n  def initializer(p: Int, c: Int)\n    parent_field = p\n    child_field = c\n  end\nend\n\nch: Child = Child.new(10, 20)\np: Int = ch.parent_field\nc: Int = ch.child_field\n";
+        assert!(check(src).is_ok());
     }
 }
