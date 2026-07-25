@@ -1,0 +1,5 @@
+type error: field `name` of class `Dog` is never assigned in `initializer` (it would be `Nil` at runtime, not `String`)
+  --> examples/errors/class_inherited_field_unassigned.yara:5:3
+  |
+5 |   name: String
+  |   ^

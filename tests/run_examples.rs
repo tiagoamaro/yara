@@ -125,7 +125,8 @@ fn every_error_example_fails_at_expected_stage() {
             | "class_field_type_mismatch"
             | "class_unassigned_field"
             | "class_unknown_field"
-            | "class_wrong_arg_count" => Stage::Type,
+            | "class_wrong_arg_count"
+            | "class_inherited_field_unassigned" => Stage::Type,
             "array_out_of_bounds"
             | "runtime_error_stack_trace"
             | "use_after_free"

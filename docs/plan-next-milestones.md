@@ -1,8 +1,8 @@
 # Yara — Next Milestones Plan
 
-## Progress (updated 2026-07-24, session paused here)
+## Progress (updated 2026-07-25, session paused here)
 
-Done and committed, suite green (116 unit + 4 integration, fmt clean):
+Done and committed, suite green (133 unit + 4 integration, fmt clean):
 - **Phase 1** — imported-file snippet fix (`diagnostics::SourceMap` virtual lines).
 - **Structure item 2** — golden error-output tests (`tests/error_output.rs` + `tests/golden/`).
 - **Phase 2** — definite-assignment check for class fields.
@@ -13,11 +13,12 @@ Done and committed, suite green (116 unit + 4 integration, fmt clean):
 - **Pointer follow-ups** (2026-07-24) — `Ptr<class>` resolution, nullable pointers (`nil` as any `Ptr<T>`), nil-deref runtime error, pointer-based linked/circular list examples, full-word file names convention (`statements.rs`/`expressions.rs`).
 - **Structure item 3** (2026-07-24) — builtins registry now carries `check`/`eval` function pointers per entry (per-builtin functions in each stage's `calls.rs`); the two parallel dispatch matches are gone, adding a builtin is compile-time enforced.
 
+- **Phase 4 complete** (2026-07-25) — single-parent class inheritance (`class Child < Parent`). Flattening approach (not chain-walking): AST `ClassDef.parent: Option<String>`; typechecker's `collect_classes` gained a third pass, `flatten_inheritance`, merging parent `fields`/`methods` into each child's `ClassInfo` in parent-first topological order (child wins on name clash), rejecting unknown parents and inheritance cycles as typecheck errors; `check_fields_assigned_in_initializer` now walks the parent chain too, so a child's `initializer` must assign every inherited field itself (no `super`). Interpreter mirrors this on `ClassDecl` (`const_inits`/`field_names`/`methods`) in `run_program`'s registration pass, assuming the typechecker already validated parent/cycle correctness. `construct`/`call_method`/`run_method`/`check_field_access`/`check_method_call` all work unchanged against the flattened tables. New example `examples/objects/inheritance.yara`, error example + golden `examples/errors/class_inherited_field_unassigned.yara`. Docs updated: `docs/syntax.md` Inheritance section, `docs/architecture.md` typechecker flow, root + `ast`/`parser`/`typechecker`/`interpreter`/`examples`/`examples/objects`/`examples/errors` `CLAUDE.md`s.
+
 **Next up (in order):**
-1. **Phase 4** — class inheritance. Re-scope before starting: first cut = single parent, fields + methods inherit, no `super`, no override keyword; typechecker `ClassInfo` gains parent lookup chain, interpreter method dispatch walks the chain.
-2. Structure item 5 (uniform `Span` in error types) — opportunistic.
-3. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed.
-4. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
+1. Structure item 5 (uniform `Span` in error types) — opportunistic.
+2. **Full-vocabulary translation** (types, boolean literals, builtins — see root CLAUDE.md TODO). Backlog, design needed.
+3. **Everything-is-an-object** (`xs.size`, `2.to_s` — see root CLAUDE.md TODO). Backlog, design needed.
 5. ~~Promote `kitchen_sink.yara` to also import the pointer examples, plus a `free`-then-`collect` interaction example.~~ **Done** (2026-07-24): `examples/pointers/free_then_collect.yara` added (hand-freed slot not double-counted by a later sweep; second sweep reclaims 0); `kitchen_sink.yara` now imports `pointers/basic`, `pointers/leak`, `pointers/linked_list`. The `collect()` examples stay out of the kitchen sink on purpose — imports splice into one program over one shared heap, so `gc`/`free_then_collect` would reclaim each other's garbage and print counts different from their documented standalone output; and `linked_list`/`circular_list` both declare `class Node`, so only one can be imported.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
