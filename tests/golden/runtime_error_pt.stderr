@@ -1,0 +1,5 @@
+runtime error: divisao por zero
+  --> examples/errors/runtime_error_pt.yara:5:11
+  |
+5 | escreva(1 / n)
+  |           ^

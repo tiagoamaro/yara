@@ -1,24 +1,25 @@
-# Mesmo programa que examples/objects/hello.yara, com palavras-chave em
-# portugues (veja translations/pt.keywords). Rode com:
-#   cargo run -- run examples/translations/hello_pt.yara --keywords translations/pt.keywords
+# Mesmo programa que examples/objects/hello.yara, agora com vocabulario
+# completo em portugues (palavras-chave, tipos, e builtins/metodos) —
+# veja translations/pt.vocab. Rode com:
+#   cargo run -- run examples/translations/hello_pt.yara --vocabulary translations/pt.vocab
 classe Ola
-  constante PI: Float = 3.14159
-  count: Integer
+  constante PI: Flutuante = 3.14159 # constante no escopo da classe
+  contagem: Inteiro                 # variavel de instancia
 
-  funcao initializer(number: Int)
-    count = number
+  funcao initializer(numero: Inteiro)
+    contagem = numero
   fim
 
-  funcao area(radius: Float): Float
-    PI * radius * radius
+  funcao area(raio: Flutuante): Flutuante
+    PI * raio * raio
   fim
 fim
 
-h: Ola = Ola.new(5)
-print(h.count)
+h: Ola = Ola.novo(5)
+escreva(h.contagem)
 
-h.count = 10
-print(h.count)
+h.contagem = 10
+escreva(h.contagem)
 
-print(h.PI)
-print(h.area(2.0))
+escreva(h.PI)
+escreva(h.area(2.0))

@@ -189,9 +189,31 @@ A pointer is declared with the `Ptr<T>` type annotation — `T` can be any base 
 
 Pointers enable both explicit memory management (via `alloc`/`free`) and automatic collection (via `collect()`) — teaching two fundamental memory-management models. Mistakes in manual management are caught as visible runtime errors, not silent undefined behavior.
 
-## Keyword translation
+## Vocabulary translation
 
-`yara run <file> --keywords <path>` recognizes translated reserved-word spellings instead of the English defaults, e.g. `translations/pt.keywords` maps `if -> se`, `class -> classe`, `def -> funcao`, `end -> fim`, and so on. See `examples/translations/hello_pt.yara` for the same `class` example from above, rewritten in Portuguese. Only the fixed set of reserved words is translatable — type names (`Int`/`Integer`/...), identifiers, string contents, and error messages always stay in English. A translation file only needs to list the keywords it wants to change; anything omitted keeps its English spelling.
+`yara run <file> --vocabulary <path>` (older alias `--keywords <path>` still works) loads a *vocabulary* file and uses it instead of the English defaults across every stage — not just the lexer's 15 reserved words, but type names, builtin functions, primitive methods, and a large majority of error-message prose too. See `translations/pt.vocab` for the bundled Portuguese reference and `examples/translations/hello_pt.yara` for a fully-Portuguese rewrite of the `class` example above (`classe`, `constante`, `funcao`, `fim`, `Inteiro`, `Flutuante`, `escreva`, `.novo`, ...).
+
+A vocabulary file is plain text with `#` line comments and sectioned `canonical = localized` mappings:
+
+```
+[keywords]
+if = se
+class = classe
+
+[types]
+Integer = Inteiro
+
+[builtins]
+print = escreva
+
+[methods]
+to_s = para_texto
+
+[messages]
+runtime/division-by-zero = divisao por zero
+```
+
+Any name omitted from any section keeps its English spelling/message — a vocabulary file only needs to list what it wants to change (a file translating just `if` is valid). Identifiers and string literal contents are never translatable; not every error message is covered by the `[messages]` catalog yet, so some error prose can still surface in English even under a translated vocabulary — untranslated keys fall back to English rather than erroring.
 
 ## Comments
 

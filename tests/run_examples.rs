@@ -6,12 +6,13 @@
 //! surfaces as an ordinary failed assertion instead of a CLI process exit. Only
 //! reachable at all because the compiler is now a library crate (`src/lib.rs`).
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use yara::interpreter::Interpreter;
-use yara::lexer::{self, KeywordToken, Lexer};
+use yara::lexer::{self, Lexer};
 use yara::parser::Parser;
+use yara::translations::Vocabulary;
 use yara::typechecker::TypeChecker;
 use yara::{resolver, translations};
 
@@ -28,47 +29,44 @@ enum Stage {
 /// Runs `source` through the full pipeline (lexer -> parser -> resolver ->
 /// typechecker -> interpreter), returning the stage that failed with its
 /// message or `Ok(())`. `path` is used only for relative `import` resolution.
-fn run_source(
-    source: &str,
-    path: &Path,
-    keywords: HashMap<String, KeywordToken>,
-) -> Result<(), (Stage, String)> {
-    let tokens = Lexer::with_keywords(source, keywords)
+fn run_source(source: &str, path: &Path, vocab: Rc<Vocabulary>) -> Result<(), (Stage, String)> {
+    let tokens = Lexer::with_vocabulary(source, vocab.clone())
         .tokenize()
         .map_err(|e| (Stage::Lex, e.message))?;
-    let program = Parser::new(tokens)
+    let program = Parser::with_vocabulary(tokens, vocab.clone())
         .parse_program()
         .map_err(|e| (Stage::Parse, e.message))?;
     let mut map = yara::diagnostics::SourceMap::new(&path.display().to_string(), source);
-    let vocab = std::rc::Rc::new(translations::Vocabulary::english());
     let program = resolver::resolve_imports(program, path, &mut map, &vocab)
         .map_err(|e| (Stage::Import, e.message))?;
-    TypeChecker::new()
+    TypeChecker::with_vocabulary(vocab.clone())
         .check_program(&program)
         .map_err(|e| (Stage::Type, e.message))?;
-    Interpreter::new()
+    Interpreter::with_vocabulary(vocab.clone())
         .run_program(&program)
         .map_err(|e| (Stage::Runtime, e.message))?;
     Ok(())
 }
 
 /// Runs the file at `path` through [`run_source`], reading its source and
-/// choosing its keyword table. Mirrors `main.rs::run_file`'s stage order, minus
+/// choosing its vocabulary. Mirrors `main.rs::run_file`'s stage order, minus
 /// the CLI's error rendering and exit.
 fn run_pipeline(path: &Path) -> Result<(), (Stage, String)> {
     let source = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
 
-    // The translated example needs its Portuguese keyword table; every other
-    // example uses the default English keywords.
-    let keywords = if path.starts_with("examples/translations") {
-        let kw = std::fs::read_to_string("translations/pt.vocab").unwrap();
-        translations::parse_keyword_file(&kw).expect("bundled pt.vocab must parse")
-    } else {
-        lexer::default_keywords()
-    };
+    // Examples written in Portuguese vocabulary (full keywords/types/builtins/
+    // methods/messages, not just keywords) need the bundled `pt.vocab`; every
+    // other example uses the default English vocabulary.
+    let vocab =
+        if path.starts_with("examples/translations") || path.ends_with("runtime_error_pt.yara") {
+            let text = std::fs::read_to_string("translations/pt.vocab").unwrap();
+            translations::parse_vocabulary(&text).expect("bundled pt.vocab must parse")
+        } else {
+            Vocabulary::english()
+        };
 
-    run_source(&source, path, keywords)
+    run_source(&source, path, Rc::new(vocab))
 }
 
 /// Recursively collects every `.yara` file under `dir`.
@@ -134,7 +132,8 @@ fn every_error_example_fails_at_expected_stage() {
             | "use_after_free"
             | "double_free"
             | "nil_pointer_deref"
-            | "string_to_i_invalid" => Stage::Runtime,
+            | "string_to_i_invalid"
+            | "runtime_error_pt" => Stage::Runtime,
             other => panic!("no expected stage recorded for error example `{other}` — add one"),
         }
     }
@@ -185,7 +184,8 @@ fn every_builtin_is_handled_by_both_stages() {
 
     for builtin in yara::builtins::BUILTINS {
         let path = Path::new("examples/_builtin_probe.yara");
-        if let Err((stage, msg)) = run_source(probe(builtin.name), path, lexer::default_keywords())
+        if let Err((stage, msg)) =
+            run_source(probe(builtin.name), path, Rc::new(Vocabulary::english()))
         {
             panic!(
                 "builtin `{}` is not handled at {stage:?}: {msg}",
@@ -244,7 +244,7 @@ fn every_method_is_handled_by_both_stages() {
     for method in yara::methods::METHODS {
         let path = Path::new("examples/_method_probe.yara");
         let source = probe(method.receiver, method.name, method.arity);
-        if let Err((stage, msg)) = run_source(&source, path, lexer::default_keywords()) {
+        if let Err((stage, msg)) = run_source(&source, path, Rc::new(Vocabulary::english())) {
             panic!(
                 "method `{}` on {:?} is not handled at {stage:?}: {msg}",
                 method.name, method.receiver

@@ -15,10 +15,11 @@ use std::path::Path;
 
 use yara::diagnostics::{self, Diagnostic, SourceMap};
 use yara::interpreter::Interpreter;
-use yara::lexer::{self, Lexer};
+use yara::lexer::Lexer;
 use yara::parser::Parser;
-use yara::resolver;
+use yara::translations::Vocabulary;
 use yara::typechecker::TypeChecker;
+use yara::{resolver, translations};
 
 /// Runs the file at `path` through the full pipeline exactly as
 /// `main.rs::run_file` does, returning the rendered diagnostic of the first
@@ -26,30 +27,43 @@ use yara::typechecker::TypeChecker;
 /// the program runs clean. Mirrors the CLI's rendering choices: plain
 /// `render` against the entry file for lex/parse errors, `render_with_map`
 /// for everything at or after import resolution.
+///
+/// `runtime_error_pt.yara` is written in Portuguese vocabulary (see
+/// `translations/pt.vocab`), same as `run_pipeline` in
+/// `tests/run_examples.rs` — this is the one example in `examples/errors/`
+/// that needs a non-English `Vocabulary` to reach the error it's meant to
+/// demonstrate (a Portuguese runtime message) rather than failing earlier at
+/// typecheck on an unrecognized type name.
 fn rendered_error(path: &Path) -> Option<String> {
     let path_str = path.to_str().unwrap();
     let source = std::fs::read_to_string(path).unwrap();
 
     let render = |err: &dyn Diagnostic| diagnostics::render(err, path_str, &source);
 
-    let tokens = match Lexer::with_keywords(&source, lexer::default_keywords()).tokenize() {
+    let vocab = if path.ends_with("runtime_error_pt.yara") {
+        let text = std::fs::read_to_string("translations/pt.vocab").unwrap();
+        std::rc::Rc::new(translations::parse_vocabulary(&text).expect("bundled pt.vocab parses"))
+    } else {
+        std::rc::Rc::new(Vocabulary::english())
+    };
+
+    let tokens = match Lexer::with_vocabulary(&source, vocab.clone()).tokenize() {
         Ok(t) => t,
         Err(e) => return Some(render(&e)),
     };
-    let program = match Parser::new(tokens).parse_program() {
+    let program = match Parser::with_vocabulary(tokens, vocab.clone()).parse_program() {
         Ok(p) => p,
         Err(e) => return Some(render(&e)),
     };
     let mut map = SourceMap::new(path_str, &source);
-    let vocab = std::rc::Rc::new(yara::translations::Vocabulary::english());
     let program = match resolver::resolve_imports(program, path, &mut map, &vocab) {
         Ok(p) => p,
         Err(e) => return Some(diagnostics::render_with_map(&e, &map)),
     };
-    if let Err(e) = TypeChecker::new().check_program(&program) {
+    if let Err(e) = TypeChecker::with_vocabulary(vocab.clone()).check_program(&program) {
         return Some(diagnostics::render_with_map(&e, &map));
     }
-    if let Err(e) = Interpreter::new().run_program(&program) {
+    if let Err(e) = Interpreter::with_vocabulary(vocab.clone()).run_program(&program) {
         return Some(diagnostics::render_with_map(&e, &map));
     }
     None

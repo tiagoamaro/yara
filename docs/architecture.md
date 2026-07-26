@@ -6,6 +6,8 @@ How Yara actually turns a `.yara` file into running output, traced through the r
 
 `main.rs::run_file` is the whole story in one function: read the file, then feed it through five stages in sequence, stopping at the first one that returns an error. (`main.rs` is a thin CLI binary over the `yara` **library crate** — `src/lib.rs` — where every stage actually lives; that split is what lets the pipeline be driven from the end-to-end `tests/`.)
 
+The diagram below shows the plain English-vocabulary path (`Lexer::new`/`Parser::new`/`TypeChecker::new`/`Interpreter::new`). When `--vocabulary <path>` is passed, `run_file` parses it into a `Vocabulary` (`translations::parse_vocabulary`, see `src/translations/CLAUDE.md`) and every stage is constructed via its `with_vocabulary(..., vocab.clone())` variant instead — same pipeline shape, just threading one shared `Rc<Vocabulary>` through so keyword/type/builtin/method spellings and error-message prose all come from the same source.
+
 ```mermaid
 flowchart TD
     A["source: String\n(std::fs::read_to_string)"] --> B["Lexer::new(&source).tokenize()\nsrc/lexer/mod.rs"]

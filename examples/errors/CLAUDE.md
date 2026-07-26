@@ -3,7 +3,7 @@
 Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
 
 ## Status
-All eighteen verified against the actual binary (2026-07-25) after primitive methods landed; output below is real, not illustrative.
+All nineteen verified against the actual binary (2026-07-25); output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -158,6 +158,16 @@ All eighteen verified against the actual binary (2026-07-25) after primitive met
   3 | n: Integer = s.to_i()
     |               ^
   ```
+
+- `runtime_error_pt.yara` — written entirely in Portuguese vocabulary (`translations/pt.vocab`), demonstrates a localized runtime error message; run with `--vocabulary translations/pt.vocab`:
+  ```
+  runtime error: divisao por zero
+    --> examples/errors/runtime_error_pt.yara:5:11
+    |
+  5 | escreva(1 / n)
+    |           ^
+  ```
+  Only the message body (`divisao por zero`) is localized — the `runtime error:` stage label itself isn't part of the `[messages]` catalog. Run *without* `--vocabulary` and it fails earlier, at typecheck, with `unknown type \`Inteiro\`` (an all-English pipeline doesn't know `Inteiro` is a translated `Integer`) — that's the golden captured in `tests/golden/runtime_error_pt.stderr`'s sibling test setup (`tests/error_output.rs` special-cases this one file to render with the Portuguese `Vocabulary`, matching `tests/run_examples.rs`'s `Stage::Runtime` expectation).
 
 ## Gotchas
 - `undefined_variable.yara` shows that referencing an undefined variable is a **typecheck-time** error, not a runtime one — Yara's typechecker tracks variable scope itself (see `src/typechecker/CLAUDE.md`), so this never reaches the interpreter.
