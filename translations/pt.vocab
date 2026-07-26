@@ -1,0 +1,72 @@
+# Portuguese vocabulary translation for Yara.
+# Format: sectioned `canonical = localized` mappings (one per line, `#` starts
+# a comment). Only names listed here change spelling; anything omitted keeps
+# its default English spelling. See src/translations/CLAUDE.md.
+
+[keywords]
+def = funcao
+end = fim
+if = se
+elsif = senaose
+else = senao
+while = enquanto
+for = para
+in = em
+const = constante
+return = retorne
+import = importar
+class = classe
+nil = nulo
+true = verdadeiro
+false = falso
+
+[types]
+Integer = Inteiro
+Float = Flutuante
+Boolean = Booleano
+String = Texto
+Nil = Nulo
+IntArray = ArrayDeInteiros
+FloatArray = ArrayDeFlutuantes
+BoolArray = ArrayDeBooleanos
+StringArray = ArrayDeTextos
+Array = Array
+Ptr = Ponteiro
+
+[builtins]
+print = escreva
+len = tamanho
+push = empilhar
+get = obter
+set = definir
+pop = desempilhar
+alloc = alocar
+deref = desreferenciar
+set_deref = definir_desreferenciado
+free = liberar
+collect = coletar
+
+[methods]
+size = tamanho
+push = empilhar
+get = obter
+set = definir
+pop = desempilhar
+is_empty = esta_vazio
+upper = maiusculas
+lower = minusculas
+trim = aparar
+to_i = para_inteiro
+to_f = para_flutuante
+to_s = para_texto
+abs = absoluto
+deref = desreferenciar
+set_deref = definir_desreferenciado
+free = liberar
+new = novo
+
+[messages]
+runtime/division-by-zero = divisao por zero
+type/undefined-variable = variavel `{0}` nao definida
+runtime/undefined-variable = variavel `{0}` nao definida
+type/unknown-type = tipo desconhecido `{0}`

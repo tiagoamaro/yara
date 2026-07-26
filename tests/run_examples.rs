@@ -61,8 +61,8 @@ fn run_pipeline(path: &Path) -> Result<(), (Stage, String)> {
     // The translated example needs its Portuguese keyword table; every other
     // example uses the default English keywords.
     let keywords = if path.starts_with("examples/translations") {
-        let kw = std::fs::read_to_string("translations/pt.keywords").unwrap();
-        translations::parse_keyword_file(&kw).expect("bundled pt.keywords must parse")
+        let kw = std::fs::read_to_string("translations/pt.vocab").unwrap();
+        translations::parse_keyword_file(&kw).expect("bundled pt.vocab must parse")
     } else {
         lexer::default_keywords()
     };
