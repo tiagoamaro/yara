@@ -82,3 +82,16 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 ```
 cargo run -- run examples/hello.yara
 ```
+
+## Running from a release build
+
+`cargo run` rebuilds in debug mode each time. For a standalone binary:
+
+```
+cargo build --release
+./target/release/yara run examples/hello.yara
+```
+
+The binary at `target/release/yara` takes the same arguments as `cargo run --`
+(e.g. `yara run <file> --keywords <path>`) and has no runtime dependency on
+Cargo — copy it anywhere and run it directly.
