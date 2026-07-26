@@ -3,7 +3,7 @@
 Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
 
 ## Status
-All sixteen verified against the actual binary (2026-07-25) after class inheritance landed; output below is real, not illustrative.
+All eighteen verified against the actual binary (2026-07-25) after primitive methods landed; output below is real, not illustrative.
 
 ## Files and their actual output
 
@@ -141,6 +141,22 @@ All sixteen verified against the actual binary (2026-07-25) after class inherita
     |
   4 | print(deref(p))
     |       ^
+  ```
+- `method_unknown_on_primitive.yara` — calling a nonexistent method on a primitive type (typecheck-time, via `lookup` in `src/methods.rs`):
+  ```
+  type error: `Integer` has no method `nope` (available: to_s, to_f, abs)
+    --> examples/errors/method_unknown_on_primitive.yara:3:2
+    |
+  3 | x.nope()
+    |  ^
+  ```
+- `string_to_i_invalid.yara` — attempting to convert a non-numeric string to an integer (caught at runtime):
+  ```
+  runtime error: cannot parse `abc` as an Integer
+    --> examples/errors/string_to_i_invalid.yara:3:15
+    |
+  3 | n: Integer = s.to_i()
+    |               ^
   ```
 
 ## Gotchas
