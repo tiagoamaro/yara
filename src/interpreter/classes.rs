@@ -71,7 +71,7 @@ impl Interpreter {
                 );
             }
             return Err(RuntimeError {
-                message: format!("cannot call method `{method}` on a non-object value"),
+                message: self.vocab.msg("runtime/method-on-non-object", &[method]),
                 line,
                 column,
                 call_stack: self.call_stack.clone(),
@@ -82,7 +82,9 @@ impl Interpreter {
             .get(method)
             .cloned()
             .ok_or_else(|| RuntimeError {
-                message: format!("class `{class_name}` has no method `{method}`"),
+                message: self
+                    .vocab
+                    .msg("runtime/class-has-no-method", &[class_name, method]),
                 line,
                 column,
                 call_stack: self.call_stack.clone(),

@@ -430,6 +430,54 @@ mod tests {
         Ok(interp)
     }
 
+    /// A `[messages]`-overridden vocabulary localizes a runtime error's
+    /// prose end-to-end (lex -> parse -> interpret), proving the
+    /// `calls.rs`/`expressions.rs` catalog conversions are actually wired
+    /// through `vocab.msg` rather than still hardcoding English.
+    #[test]
+    fn localized_vocabulary_translates_runtime_error_messages() {
+        let vocab = Rc::new(
+            crate::translations::parse_vocabulary(
+                "[messages]\nruntime/undefined-function = funcao desconhecida `{0}`\n",
+            )
+            .unwrap(),
+        );
+        let tokens = Lexer::with_vocabulary("mystery()", vocab.clone())
+            .tokenize()
+            .unwrap();
+        let program = Parser::with_vocabulary(tokens, vocab.clone())
+            .parse_program()
+            .unwrap();
+        let err = Interpreter::with_vocabulary(vocab)
+            .run_program(&program)
+            .unwrap_err();
+        assert_eq!(err.message, "funcao desconhecida `mystery`");
+    }
+
+    /// An untranslated key still falls back to the English catalog template
+    /// even when the vocabulary has *other* overrides -- `array index...`
+    /// (from `calls.rs`/`expressions.rs`'s shared "out of bounds" site)
+    /// isn't mentioned in this override file.
+    #[test]
+    fn localized_vocabulary_falls_back_to_english_for_untranslated_keys() {
+        let vocab = Rc::new(
+            crate::translations::parse_vocabulary(
+                "[messages]\nruntime/division-by-zero = divisao por zero\n",
+            )
+            .unwrap(),
+        );
+        let tokens = Lexer::with_vocabulary("x: Integer = [1][5]", vocab.clone())
+            .tokenize()
+            .unwrap();
+        let program = Parser::with_vocabulary(tokens, vocab.clone())
+            .parse_program()
+            .unwrap();
+        let err = Interpreter::with_vocabulary(vocab)
+            .run_program(&program)
+            .unwrap_err();
+        assert_eq!(err.message, "array index 5 out of bounds (length 1)");
+    }
+
     /// Dereferencing a `nil` pointer is a runtime error naming the mistake,
     /// and pointer-vs-nil equality evaluates sanely at runtime.
     #[test]

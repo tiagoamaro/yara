@@ -105,7 +105,9 @@ impl Interpreter {
                 let value_val = self.eval_expr(value)?;
                 let Value::Instance(fields, _) = object_val else {
                     return Err(RuntimeError {
-                        message: format!("cannot assign field `{field}` on a non-object value"),
+                        message: self
+                            .vocab
+                            .msg("runtime/field-assign-on-non-object", &[field]),
                         line: *line,
                         column: *column,
                         call_stack: self.call_stack.clone(),

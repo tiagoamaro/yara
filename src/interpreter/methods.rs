@@ -14,7 +14,7 @@ pub(crate) fn eval_primitive_method(
 ) -> Result<Value, RuntimeError> {
     let canonical_method = interp.vocab.canonical_method(method);
     let m = crate::methods::lookup(kind, &canonical_method).ok_or_else(|| RuntimeError {
-        message: format!("no method `{method}` for this value"),
+        message: interp.vocab.msg("runtime/no-method-for-value", &[method]),
         line,
         column,
         call_stack: interp.call_stack.clone(),
@@ -79,9 +79,9 @@ pub(crate) fn eval_array_set(
         let mut items_mut = items.borrow_mut();
         let Some(slot) = usize::try_from(idx).ok().and_then(|i| items_mut.get_mut(i)) else {
             return Err(RuntimeError {
-                message: format!(
-                    "array index {idx} out of bounds (length {})",
-                    items_mut.len()
+                message: interp.vocab.msg(
+                    "runtime/array-index-out-of-bounds",
+                    &[&idx.to_string(), &items_mut.len().to_string()],
                 ),
                 line,
                 column,
@@ -212,7 +212,9 @@ pub(crate) fn eval_string_to_i(
             .parse::<i64>()
             .map(Value::Integer)
             .map_err(|_| RuntimeError {
-                message: format!("cannot parse `{s}` as an Integer"),
+                message: interp
+                    .vocab
+                    .msg("runtime/cannot-parse-as-integer", &[s.as_str()]),
                 line,
                 column,
                 call_stack: interp.call_stack.clone(),
@@ -234,7 +236,9 @@ pub(crate) fn eval_string_to_f(
             .parse::<f64>()
             .map(Value::Float)
             .map_err(|_| RuntimeError {
-                message: format!("cannot parse `{s}` as a Float"),
+                message: interp
+                    .vocab
+                    .msg("runtime/cannot-parse-as-float", &[s.as_str()]),
                 line,
                 column,
                 call_stack: interp.call_stack.clone(),

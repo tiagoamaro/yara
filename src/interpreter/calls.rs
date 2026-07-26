@@ -20,7 +20,9 @@ pub(super) fn heap_read(
         }
         other => {
             return Err(RuntimeError {
-                message: format!("`deref` expects a pointer, found `{other}`"),
+                message: interp
+                    .vocab
+                    .msg("runtime/deref-expects-pointer", &[&other.to_string()]),
                 line,
                 column,
                 call_stack: interp.call_stack.clone(),
@@ -30,13 +32,17 @@ pub(super) fn heap_read(
     match interp.heap.get(idx) {
         Some(Some(v)) => Ok(v.clone()),
         Some(None) => Err(RuntimeError {
-            message: format!("use after free: pointer ptr#{idx} was already freed"),
+            message: interp
+                .vocab
+                .msg("runtime/use-after-free", &[&idx.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
         }),
         None => Err(RuntimeError {
-            message: format!("invalid pointer ptr#{idx}"),
+            message: interp
+                .vocab
+                .msg("runtime/invalid-pointer", &[&idx.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
@@ -65,7 +71,9 @@ pub(super) fn heap_write(
         }
         other => {
             return Err(RuntimeError {
-                message: format!("`set_deref` expects a pointer, found `{other}`"),
+                message: interp
+                    .vocab
+                    .msg("runtime/set-deref-expects-pointer", &[&other.to_string()]),
                 line,
                 column,
                 call_stack: interp.call_stack.clone(),
@@ -78,13 +86,17 @@ pub(super) fn heap_write(
             Ok(())
         }
         Some(None) => Err(RuntimeError {
-            message: format!("use after free: pointer ptr#{idx} was already freed"),
+            message: interp
+                .vocab
+                .msg("runtime/use-after-free", &[&idx.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
         }),
         None => Err(RuntimeError {
-            message: format!("invalid pointer ptr#{idx}"),
+            message: interp
+                .vocab
+                .msg("runtime/invalid-pointer", &[&idx.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
@@ -112,7 +124,9 @@ pub(super) fn heap_free(
         }
         other => {
             return Err(RuntimeError {
-                message: format!("`free` expects a pointer, found `{other}`"),
+                message: interp
+                    .vocab
+                    .msg("runtime/free-expects-pointer", &[&other.to_string()]),
                 line,
                 column,
                 call_stack: interp.call_stack.clone(),
@@ -125,13 +139,15 @@ pub(super) fn heap_free(
             Ok(())
         }
         Some(None) => Err(RuntimeError {
-            message: format!("double free: pointer ptr#{idx} was already freed"),
+            message: interp.vocab.msg("runtime/double-free", &[&idx.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
         }),
         None => Err(RuntimeError {
-            message: format!("invalid pointer ptr#{idx}"),
+            message: interp
+                .vocab
+                .msg("runtime/invalid-pointer", &[&idx.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
@@ -152,7 +168,9 @@ pub(crate) fn eval_len(
             Ok(Value::Integer(len))
         }
         other => Err(RuntimeError {
-            message: format!("`len` expects an array, found `{other}`"),
+            message: interp
+                .vocab
+                .msg("runtime/len-expects-array", &[&other.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
@@ -174,7 +192,9 @@ pub(crate) fn eval_push(
             Ok(Value::Nil)
         }
         other => Err(RuntimeError {
-            message: format!("`push` expects an array, found `{other}`"),
+            message: interp
+                .vocab
+                .msg("runtime/push-expects-array", &[&other.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
@@ -207,7 +227,10 @@ pub(crate) fn eval_set(
             let mut items = items.borrow_mut();
             let Some(slot) = usize::try_from(idx).ok().and_then(|i| items.get_mut(i)) else {
                 return Err(RuntimeError {
-                    message: format!("array index {idx} out of bounds (length {})", items.len()),
+                    message: interp.vocab.msg(
+                        "runtime/array-index-out-of-bounds",
+                        &[&idx.to_string(), &items.len().to_string()],
+                    ),
                     line,
                     column,
                     call_stack: interp.call_stack.clone(),
@@ -217,7 +240,9 @@ pub(crate) fn eval_set(
             Ok(Value::Nil)
         }
         other => Err(RuntimeError {
-            message: format!("`set` expects an array, found `{other}`"),
+            message: interp
+                .vocab
+                .msg("runtime/set-expects-array", &[&other.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
@@ -243,7 +268,9 @@ pub(crate) fn eval_pop(
             Ok(popped)
         }
         other => Err(RuntimeError {
-            message: format!("`pop` expects an array, found `{other}`"),
+            message: interp
+                .vocab
+                .msg("runtime/pop-expects-array", &[&other.to_string()]),
             line,
             column,
             call_stack: interp.call_stack.clone(),
@@ -423,7 +450,7 @@ impl Interpreter {
             .get(callee)
             .cloned()
             .ok_or_else(|| RuntimeError {
-                message: format!("undefined function `{callee}`"),
+                message: self.vocab.msg("runtime/undefined-function", &[callee]),
                 line,
                 column,
                 call_stack: self.call_stack.clone(),

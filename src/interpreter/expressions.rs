@@ -9,7 +9,9 @@ impl Interpreter {
         match self.eval_expr(expr)? {
             Value::Boolean(b) => Ok(b),
             other => Err(RuntimeError {
-                message: format!("expected Boolean condition, found `{other}`"),
+                message: self
+                    .vocab
+                    .msg("runtime/expected-boolean-condition", &[&other.to_string()]),
                 line: expr.line(),
                 column: expr.column(),
                 call_stack: self.call_stack.clone(),
@@ -31,7 +33,9 @@ impl Interpreter {
         match self.eval_expr(expr)? {
             Value::Integer(i) => Ok(i),
             other => Err(RuntimeError {
-                message: format!("expected Integer, found `{other}`"),
+                message: self
+                    .vocab
+                    .msg("runtime/expected-integer", &[&other.to_string()]),
                 line,
                 column,
                 call_stack: self.call_stack.clone(),
@@ -55,7 +59,7 @@ impl Interpreter {
             Expr::NilLit { .. } => Ok(Value::Nil),
             Expr::Ident { name, line, column } => {
                 self.lookup_var(name).cloned().ok_or_else(|| RuntimeError {
-                    message: format!("undefined variable `{name}`"),
+                    message: self.vocab.msg("runtime/undefined-variable", &[name]),
                     line: *line,
                     column: *column,
                     call_stack: self.call_stack.clone(),
@@ -91,7 +95,9 @@ impl Interpreter {
                 Value::Integer(i) => Ok(Value::Integer(-i)),
                 Value::Float(f) => Ok(Value::Float(-f)),
                 other => Err(RuntimeError {
-                    message: format!("cannot negate `{other}`"),
+                    message: self
+                        .vocab
+                        .msg("runtime/cannot-negate", &[&other.to_string()]),
                     line: *line,
                     column: *column,
                     call_stack: self.call_stack.clone(),
@@ -123,7 +129,7 @@ impl Interpreter {
                 let object_val = self.eval_expr(object)?;
                 let Value::Instance(fields, class_name) = &object_val else {
                     return Err(RuntimeError {
-                        message: format!("cannot access field `{field}` on a non-object value"),
+                        message: self.vocab.msg("runtime/field-on-non-object", &[field]),
                         line: *line,
                         column: *column,
                         call_stack: self.call_stack.clone(),
@@ -131,7 +137,9 @@ impl Interpreter {
                 };
                 let found = fields.borrow().get(field).cloned();
                 found.ok_or_else(|| RuntimeError {
-                    message: format!("class `{class_name}` has no field `{field}`"),
+                    message: self
+                        .vocab
+                        .msg("runtime/class-has-no-field", &[class_name, field]),
                     line: *line,
                     column: *column,
                     call_stack: self.call_stack.clone(),
@@ -174,9 +182,9 @@ impl Interpreter {
                     .ok()
                     .and_then(|i| items.get(i).cloned())
                     .ok_or_else(|| RuntimeError {
-                        message: format!(
-                            "array index {idx} out of bounds (length {})",
-                            items.len()
+                        message: self.vocab.msg(
+                            "runtime/array-index-out-of-bounds",
+                            &[&idx.to_string(), &items.len().to_string()],
                         ),
                         line,
                         column,
@@ -184,7 +192,9 @@ impl Interpreter {
                     })
             }
             other => Err(RuntimeError {
-                message: format!("cannot index into `{other}`"),
+                message: self
+                    .vocab
+                    .msg("runtime/cannot-index-into", &[&other.to_string()]),
                 line,
                 column,
                 call_stack: self.call_stack.clone(),
@@ -226,23 +236,33 @@ impl Interpreter {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                 (Value::String(a), Value::String(b)) => Ok(Value::String(a + &b)),
-                (a, b) => Err(err(format!("cannot add `{a}` and `{b}`"))),
+                (a, b) => Err(err(self
+                    .vocab
+                    .msg("runtime/cannot-add", &[&a.to_string(), &b.to_string()]))),
             },
             BinOp::Sub => match (left, right) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-                (a, b) => Err(err(format!("cannot subtract `{b}` from `{a}`"))),
+                (a, b) => Err(err(self
+                    .vocab
+                    .msg("runtime/cannot-subtract", &[&b.to_string(), &a.to_string()]))),
             },
             BinOp::Mul => match (left, right) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-                (a, b) => Err(err(format!("cannot multiply `{a}` and `{b}`"))),
+                (a, b) => Err(err(self
+                    .vocab
+                    .msg("runtime/cannot-multiply", &[&a.to_string(), &b.to_string()]))),
             },
             BinOp::Div => match (left, right) {
-                (Value::Integer(_), Value::Integer(0)) => Err(err("division by zero".to_string())),
+                (Value::Integer(_), Value::Integer(0)) => {
+                    Err(err(self.vocab.msg("runtime/division-by-zero", &[])))
+                }
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a / b)),
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
-                (a, b) => Err(err(format!("cannot divide `{a}` by `{b}`"))),
+                (a, b) => Err(err(self
+                    .vocab
+                    .msg("runtime/cannot-divide", &[&a.to_string(), &b.to_string()]))),
             },
             BinOp::Eq => Ok(Value::Boolean(left == right)),
             BinOp::NotEq => Ok(Value::Boolean(left != right)),
@@ -250,10 +270,18 @@ impl Interpreter {
                 let ord = match (&left, &right) {
                     (Value::Integer(a), Value::Integer(b)) => a.partial_cmp(b),
                     (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
-                    _ => return Err(err(format!("cannot compare `{left}` and `{right}`"))),
+                    _ => {
+                        return Err(err(self.vocab.msg(
+                            "runtime/cannot-compare",
+                            &[&left.to_string(), &right.to_string()],
+                        )))
+                    }
                 };
                 let Some(ord) = ord else {
-                    return Err(err(format!("cannot compare `{left}` and `{right}`")));
+                    return Err(err(self.vocab.msg(
+                        "runtime/cannot-compare",
+                        &[&left.to_string(), &right.to_string()],
+                    )));
                 };
                 let result = match op {
                     BinOp::Lt => ord.is_lt(),
