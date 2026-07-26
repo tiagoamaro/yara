@@ -240,7 +240,7 @@ impl TypeChecker {
                 .map(|inner| Type::Pointer(Box::new(inner)));
         }
         Type::from_annotation_name(name).ok_or_else(|| TypeError {
-            message: format!("unknown type `{name}`"),
+            message: self.vocab.msg("type/unknown-type", &[name]),
             line,
             column,
         })
@@ -287,11 +287,45 @@ mod tests {
     use super::*;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use crate::translations::parse_vocabulary;
 
     fn check(src: &str) -> Result<(), TypeError> {
         let tokens = Lexer::new(src).tokenize().unwrap();
         let program = Parser::new(tokens).parse_program().unwrap();
         TypeChecker::new().check_program(&program)
+    }
+
+    fn check_with_vocab(src: &str, vocab: Rc<Vocabulary>) -> Result<(), TypeError> {
+        let tokens = Lexer::new(src).tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        TypeChecker::with_vocabulary(vocab).check_program(&program)
+    }
+
+    #[test]
+    fn unknown_type_error_is_localized() {
+        let vocab = Rc::new(
+            parse_vocabulary("[messages]\ntype/unknown-type = tipo desconhecido `{0}`\n").unwrap(),
+        );
+        let err = check_with_vocab("x: Bogus = 5", vocab).unwrap_err();
+        assert_eq!(err.message, "tipo desconhecido `Bogus`");
+    }
+
+    #[test]
+    fn unknown_type_error_is_localized_inside_ptr_annotation() {
+        let vocab = Rc::new(
+            parse_vocabulary("[messages]\ntype/unknown-type = tipo desconhecido `{0}`\n").unwrap(),
+        );
+        let err = check_with_vocab("x: Ptr<Bogus> = nil", vocab).unwrap_err();
+        assert_eq!(err.message, "tipo desconhecido `Bogus`");
+    }
+
+    #[test]
+    fn untranslated_message_falls_back_to_english() {
+        let vocab = Rc::new(
+            parse_vocabulary("[messages]\nruntime/division-by-zero = divisao por zero\n").unwrap(),
+        );
+        let err = check_with_vocab("x: Bogus = 5", vocab).unwrap_err();
+        assert_eq!(err.message, "unknown type `Bogus`");
     }
 
     #[test]
