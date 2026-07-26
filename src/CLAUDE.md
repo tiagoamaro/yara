@@ -61,6 +61,16 @@ end-to-end `tests/` possible (a binary-only crate can't be `use`d from tests).
   An integration test (`tests/run_examples.rs`) asserts every registry entry is
   wired into both stages via the probe-snippet pattern.
 
+- **`methods.rs`** — unified registry of primitive methods callable on Array/String/
+  Integer/Float/Boolean/Pointer receiver types (`xs.size()`, `2.to_s()`, `"3".to_i()`,
+  `p.deref()`, etc: 25 methods total). Each registry entry is keyed by `(ReceiverKind,
+  name)` (unlike `builtins.rs`, a method name like `to_s` exists on multiple receiver
+  kinds) and holds name, arity, and function pointers to typecheck and eval logic.
+  Adding a primitive method requires: (1) a registry entry here, (2) a `MethodCheckFn`
+  in `src/typechecker/methods.rs`, (3) a `MethodEvalFn` in `src/interpreter/methods.rs`.
+  Free-function builtins (e.g., `len`, `push`, `deref` in `builtins.rs`) are kept
+  unchanged and side-by-side — both `len(xs)` and `xs.size()` work concurrently.
+
 ## Conventions
 
 - Adding a cross-stage shared module: prefer a flat `src/<name>.rs` (like
