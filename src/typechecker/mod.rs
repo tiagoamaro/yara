@@ -8,11 +8,19 @@ use std::fmt;
 mod calls;
 mod classes;
 mod expressions;
+mod methods;
 mod statements;
 
 pub(crate) use calls::{
     check_alloc, check_collect, check_deref, check_free, check_get, check_len, check_pop,
     check_push, check_set, check_set_deref,
+};
+pub(crate) use methods::{
+    check_array_get, check_array_is_empty, check_array_pop, check_array_push, check_array_set,
+    check_array_size, check_bool_to_s, check_float_abs, check_float_to_i, check_float_to_s,
+    check_int_abs, check_int_to_f, check_int_to_s, check_ptr_deref, check_ptr_free,
+    check_ptr_set_deref, check_string_is_empty, check_string_lower, check_string_size,
+    check_string_to_f, check_string_to_i, check_string_to_s, check_string_trim, check_string_upper,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
