@@ -144,7 +144,7 @@ pub trait Diagnostic {
 /// which this delegates to via a single-file [`SourceMap`] (so both paths
 /// share one formatting implementation and stay byte-identical).
 pub fn render(diag: &dyn Diagnostic, path: &str, source: &str) -> String {
-    render_with_map(diag, &SourceMap::new(path, source))
+    render_with_map_and_vocab(diag, &SourceMap::new(path, source), None)
 }
 
 /// Like [`render`], but resolves every position (the primary span and each
@@ -152,23 +152,63 @@ pub fn render(diag: &dyn Diagnostic, path: &str, source: &str) -> String {
 /// an imported file's range gets that file's path, local line, and snippet —
 /// not the entry file's.
 pub fn render_with_map(diag: &dyn Diagnostic, map: &SourceMap) -> String {
+    render_with_map_and_vocab(diag, map, None)
+}
+
+/// Like [`render_with_map`], but when `vocab` is `Some`, localizes the stage
+/// label (`diag.kind()`, e.g. `"lex error"`) and the `in`/`at` words in each
+/// call-stack frame line through the message catalog (`diag/lex-error`,
+/// `diag/parse-error`, ..., `diag/frame-in`, `diag/frame-at`). `vocab: None`
+/// (used by [`render`] and [`render_with_map`]) keeps every word exactly as
+/// `diag.kind()` returns it and hardcodes `in`/`at` — byte-identical to the
+/// pre-localization output, which is what keeps `tests/golden/*.stderr` and
+/// the renderer unit tests below passing unchanged.
+pub fn render_with_map_and_vocab(
+    diag: &dyn Diagnostic,
+    map: &SourceMap,
+    vocab: Option<&crate::translations::Vocabulary>,
+) -> String {
     let span = diag.span();
     let mut out = String::new();
-    out.push_str(&format!("{}: {}\n", diag.kind(), diag.message()));
+    let kind = localized_kind(diag.kind(), vocab);
+    out.push_str(&format!("{}: {}\n", kind, diag.message()));
     let file = map.lookup(span.line);
     let local = span.line - file.start_line + 1;
     out.push_str(&format!("  --> {}:{}:{}\n", file.path, local, span.column));
     out.push_str(&render_snippet(&file.source, local, span.column));
+    let (in_word, at_word) = match vocab {
+        Some(v) => (v.msg("diag/frame-in", &[]), v.msg("diag/frame-at", &[])),
+        None => ("in".to_string(), "at".to_string()),
+    };
     for frame in diag.frames() {
         let file = map.lookup(frame.span.line);
         let local = frame.span.line - file.start_line + 1;
         out.push_str(&format!(
-            "  in `{}` at {}:{}:{}\n",
-            frame.name, file.path, local, frame.span.column
+            "  {} `{}` {} {}:{}:{}\n",
+            in_word, frame.name, at_word, file.path, local, frame.span.column
         ));
         out.push_str(&render_snippet(&file.source, local, frame.span.column));
     }
     out
+}
+
+/// Maps a stage's hardcoded English `kind()` label to its catalog key and
+/// looks up `vocab`'s localized spelling; `vocab: None` or an unrecognized
+/// `kind` (a synthetic test diagnostic, e.g.) passes `kind` through unchanged.
+fn localized_kind(kind: &str, vocab: Option<&crate::translations::Vocabulary>) -> String {
+    let Some(vocab) = vocab else {
+        return kind.to_string();
+    };
+    let key = match kind {
+        "lex error" => "diag/lex-error",
+        "parse error" => "diag/parse-error",
+        "type error" => "diag/type-error",
+        "runtime error" => "diag/runtime-error",
+        "import error" => "diag/import-error",
+        "keyword translation error" => "diag/keyword-translation-error",
+        _ => return kind.to_string(),
+    };
+    vocab.msg(key, &[])
 }
 
 /// Renders a single source line with a caret under `column`, gutter-aligned:
@@ -294,5 +334,40 @@ mod tests {
             rendered,
             "type error: boom\n  --> helper.yara:2:5\n  |\n2 | bad line\n  |     ^\n"
         );
+    }
+
+    /// With a localized `Vocabulary` (a `[messages]` override for the stage
+    /// label and the frame `in`/`at` words), `render_with_map_and_vocab` must
+    /// localize both the header and the call-stack-frame line; `render`/
+    /// `render_with_map` (vocab: None) must stay untouched (asserted by the
+    /// two tests above, unchanged).
+    #[test]
+    fn render_with_map_and_vocab_localizes_kind_and_frame_words() {
+        struct Dummy;
+        impl Diagnostic for Dummy {
+            fn kind(&self) -> &str {
+                "type error"
+            }
+            fn message(&self) -> &str {
+                "boom"
+            }
+            fn span(&self) -> Span {
+                Span::new(1, 1)
+            }
+            fn frames(&self) -> Vec<Frame> {
+                vec![Frame {
+                    name: "helper".to_string(),
+                    span: Span::new(1, 1),
+                }]
+            }
+        }
+        let vocab = crate::translations::parse_vocabulary(
+            "[messages]\ndiag/type-error = erro de tipo\ndiag/frame-in = em\ndiag/frame-at = as\n",
+        )
+        .unwrap();
+        let map = SourceMap::new("main.yara", "x = 1\n");
+        let rendered = render_with_map_and_vocab(&Dummy, &map, Some(&vocab));
+        assert!(rendered.starts_with("erro de tipo: boom\n"));
+        assert!(rendered.contains("  em `helper` as main.yara:1:1\n"));
     }
 }

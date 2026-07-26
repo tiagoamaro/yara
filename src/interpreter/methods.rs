@@ -349,15 +349,14 @@ pub(crate) fn eval_float_abs(
 // Boolean methods
 
 pub(crate) fn eval_bool_to_s(
-    _interp: &mut Interpreter,
+    interp: &mut Interpreter,
     receiver: Value,
     _args: &[Expr],
     _line: usize,
     _column: usize,
 ) -> Result<Value, RuntimeError> {
     if let Value::Boolean(b) = receiver {
-        let s = if b { "true" } else { "false" }.to_string();
-        Ok(Value::String(s))
+        Ok(Value::String(interp.vocab.bool_word(b)))
     } else {
         unreachable!("eval_bool_to_s only called for booleans")
     }
@@ -408,6 +407,24 @@ mod tests {
         let tokens = Lexer::new(src).tokenize().unwrap();
         let program = Parser::new(tokens).parse_program().unwrap();
         let mut interp = Interpreter::new();
+        interp.run_program(&program)?;
+        Ok(interp)
+    }
+
+    /// Like [`run`], but with `vocab`'s keyword table wired into the lexer, so
+    /// a translated `true`/`false` spelling parses -- used to test that
+    /// `Boolean#to_s` echoes the *localized* boolean word, not always English.
+    fn run_with_vocab(
+        src: &str,
+        vocab: std::rc::Rc<crate::translations::Vocabulary>,
+    ) -> Result<Interpreter, RuntimeError> {
+        let tokens = Lexer::with_keywords(src, vocab.keywords.clone())
+            .tokenize()
+            .unwrap();
+        let program = Parser::with_vocabulary(tokens, vocab.clone())
+            .parse_program()
+            .unwrap();
+        let mut interp = Interpreter::with_vocabulary(vocab);
         interp.run_program(&program)?;
         Ok(interp)
     }
@@ -573,6 +590,27 @@ mod tests {
         assert_eq!(
             interp.lookup_var("t"),
             Some(&Value::String("false".to_string()))
+        );
+    }
+
+    #[test]
+    fn bool_to_s_uses_localized_word() {
+        let vocab = std::rc::Rc::new(
+            crate::translations::parse_vocabulary("true = verdadeiro\nfalse = falso\n")
+                .expect("vocab should parse"),
+        );
+        let interp = run_with_vocab(
+            "a = verdadeiro\nb = falso\ns = a.to_s()\nt = b.to_s()",
+            vocab,
+        )
+        .unwrap();
+        assert_eq!(
+            interp.lookup_var("s"),
+            Some(&Value::String("verdadeiro".to_string()))
+        );
+        assert_eq!(
+            interp.lookup_var("t"),
+            Some(&Value::String("falso".to_string()))
         );
     }
 

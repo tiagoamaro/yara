@@ -39,6 +39,22 @@ that used to live in `main.rs`.
   `kind: message`, `  --> path:line:column`, the snippet, then a frame line +
   snippet per `Frame`. Returned as a `String` (not printed) so it's unit-testable;
   `main.rs`'s `stage` helper is the only caller and does the `eprint!` + exit.
+- `render_with_map_and_vocab(&dyn Diagnostic, &SourceMap, Option<&Vocabulary>)` —
+  the actual implementation both `render` and `render_with_map` delegate to
+  (each passing `vocab: None`). With `Some(vocab)`, localizes `diag.kind()`
+  (via `localized_kind`, matching the six hardcoded English `kind()` strings —
+  `"lex error"`, `"parse error"`, `"type error"`, `"runtime error"`,
+  `"import error"`, `"keyword translation error"` — to catalog keys
+  `diag/lex-error` … `diag/keyword-translation-error`) and the `in`/`at` words
+  in each call-stack frame line (`diag/frame-in`/`diag/frame-at`), all in
+  `src/translations/messages.rs::MESSAGES`. `main.rs`'s `stage_mapped` is the
+  only caller that passes `Some(vocab)` (for the post-import stages); `stage`
+  (lex/parse/translation errors) still calls plain `render`, so lex/parse-stage
+  labels aren't localized yet — only what's reachable through `stage_mapped`.
+  `kind()`'s trait signature is unchanged (still `&str`, still hardcoded
+  English per stage) — only the *renderer* looks up a translation for it, kept
+  this way so `render`/`render_with_map` (vocab: None) stay byte-identical to
+  pre-localization output without touching every stage's error type.
 - `render_snippet(source, line, column)` renders one gutter-aligned source line
   with a `^` caret; a line past EOF yields `""` rather than panicking.
 

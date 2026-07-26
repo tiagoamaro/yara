@@ -307,6 +307,17 @@ pub const MESSAGES: &[(&str, &str)] = &[
         "type/cannot-apply-binop",
         "cannot apply `{0}` to `{1}` and `{2}`",
     ),
+    ("diag/lex-error", "lex error"),
+    ("diag/parse-error", "parse error"),
+    ("diag/type-error", "type error"),
+    ("diag/runtime-error", "runtime error"),
+    ("diag/import-error", "import error"),
+    (
+        "diag/keyword-translation-error",
+        "keyword translation error",
+    ),
+    ("diag/frame-in", "in"),
+    ("diag/frame-at", "at"),
 ];
 
 /// Substitutes `{0}`, `{1}`, ... in `template` with `args`, in order.

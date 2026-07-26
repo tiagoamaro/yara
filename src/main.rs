@@ -64,11 +64,21 @@ fn stage<T, E: Diagnostic>(result: Result<T, E>, path: &str, source: &str) -> T 
 /// (resolving itself, typechecking, interpretation): renders through the
 /// resolver-built [`diagnostics::SourceMap`] so a position belonging to an
 /// imported file gets that file's path/line/snippet, not the entry file's.
-fn stage_mapped<T, E: Diagnostic>(result: Result<T, E>, map: &diagnostics::SourceMap) -> T {
+/// `vocab` localizes the stage label and call-stack-frame words when the run
+/// used a translated vocabulary; pass `None` to keep the untranslated English
+/// rendering.
+fn stage_mapped<T, E: Diagnostic>(
+    result: Result<T, E>,
+    map: &diagnostics::SourceMap,
+    vocab: Option<&Vocabulary>,
+) -> T {
     match result {
         Ok(value) => value,
         Err(err) => {
-            eprint!("{}", diagnostics::render_with_map(&err, map));
+            eprint!(
+                "{}",
+                diagnostics::render_with_map_and_vocab(&err, map, vocab)
+            );
             std::process::exit(1);
         }
     }
@@ -130,13 +140,16 @@ fn run_file(path: &str, vocabulary_path: Option<&str>) {
     let program = stage_mapped(
         resolver::resolve_imports(program, std::path::Path::new(path), &mut map, &vocab),
         &map,
+        Some(&vocab),
     );
     stage_mapped(
         TypeChecker::with_vocabulary(vocab.clone()).check_program(&program),
         &map,
+        Some(&vocab),
     );
     stage_mapped(
-        Interpreter::with_vocabulary(vocab).run_program(&program),
+        Interpreter::with_vocabulary(vocab.clone()).run_program(&program),
         &map,
+        Some(&vocab),
     );
 }
