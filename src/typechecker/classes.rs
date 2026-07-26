@@ -450,6 +450,11 @@ pub(super) fn check_method_call(
 
     let object_ty = super::expressions::check_expr(checker, object)?;
     let Type::Instance(class_name) = &object_ty else {
+        if let Some(kind) = crate::methods::ReceiverKind::of_type(&object_ty) {
+            return super::methods::check_primitive_method(
+                checker, kind, &object_ty, method, args, line, column,
+            );
+        }
         return Err(TypeError {
             message: format!("cannot call method `{method}` on `{object_ty}`"),
             line,
