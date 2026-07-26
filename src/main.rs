@@ -1,14 +1,17 @@
+use std::rc::Rc;
 use yara::diagnostics::{self, Diagnostic};
 use yara::interpreter::Interpreter;
-use yara::lexer::{self, Lexer};
+use yara::lexer::Lexer;
 use yara::parser::Parser;
+use yara::translations::Vocabulary;
 use yara::typechecker::TypeChecker;
 use yara::{resolver, translations};
 
 /// CLI entry point. Parses `std::env::args()` and dispatches on the
-/// subcommand: only `yara run <file> [--keywords <path>]` is supported,
-/// which hands `<file>` (and the optional keyword-translation file) off to
-/// [`run_file`]. Any other invocation (missing subcommand, unknown
+/// subcommand: only `yara run <file> [--vocabulary <path>]` is supported
+/// (`--keywords <path>` is kept working as an alias for backward
+/// compatibility), which hands `<file>` (and the optional vocabulary file)
+/// off to [`run_file`]. Any other invocation (missing subcommand, unknown
 /// subcommand, or `run` with no file argument) prints a usage message to
 /// stderr and exits with status 1.
 fn main() {
@@ -16,24 +19,28 @@ fn main() {
     match args.get(1).map(String::as_str) {
         Some("run") => {
             let Some(path) = args.get(2) else {
-                eprintln!("usage: yara run <file> [--keywords <path>]");
+                eprintln!("usage: yara run <file> [--vocabulary <path>]");
                 std::process::exit(1);
             };
-            let keywords_path = parse_keywords_flag(&args[3..]);
-            run_file(path, keywords_path.as_deref());
+            let vocabulary_path = parse_vocabulary_flag(&args[3..]);
+            run_file(path, vocabulary_path.as_deref());
         }
         _ => {
-            eprintln!("usage: yara run <file> [--keywords <path>]");
+            eprintln!("usage: yara run <file> [--vocabulary <path>]");
             std::process::exit(1);
         }
     }
 }
 
-/// Scans the arguments following `<file>` for `--keywords <path>`, Yara's
-/// only optional flag. Hand-rolled rather than pulling in an args-parsing
-/// crate, matching the rest of the project's zero-dependency stance.
-fn parse_keywords_flag(rest: &[String]) -> Option<String> {
-    let pos = rest.iter().position(|a| a == "--keywords")?;
+/// Scans the arguments following `<file>` for `--vocabulary <path>` (primary
+/// flag) or `--keywords <path>` (older alias, kept working for
+/// backward-compatible translation files that only translate keywords).
+/// Hand-rolled rather than pulling in an args-parsing crate, matching the
+/// rest of the project's zero-dependency stance.
+fn parse_vocabulary_flag(rest: &[String]) -> Option<String> {
+    let pos = rest
+        .iter()
+        .position(|a| a == "--vocabulary" || a == "--keywords")?;
     rest.get(pos + 1).cloned()
 }
 
@@ -73,12 +80,13 @@ fn stage_mapped<T, E: Diagnostic>(result: Result<T, E>, map: &diagnostics::Sourc
 /// [`stage`], which renders the error and exits at the *first* stage that fails
 /// — later stages never run against a program that didn't pass the earlier ones.
 ///
-/// `keywords_path`, if present, names a translation file (see
-/// `translations::parse_keyword_file`) whose keyword table the lexer uses
-/// instead of the English default — read and parsed *before* the source file
-/// itself, against its own path/text, since a bad translation file should fail
-/// independently of whatever program it would have been applied to.
-fn run_file(path: &str, keywords_path: Option<&str>) {
+/// `vocabulary_path`, if present, names a vocabulary-translation file (see
+/// `translations::parse_vocabulary`) whose `Vocabulary` (keywords, types,
+/// builtins, methods, messages) every stage uses instead of the English
+/// default — read and parsed *before* the source file itself, against its own
+/// path/text, since a bad vocabulary file should fail independently of
+/// whatever program it would have been applied to.
+fn run_file(path: &str, vocabulary_path: Option<&str>) {
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -87,37 +95,48 @@ fn run_file(path: &str, keywords_path: Option<&str>) {
         }
     };
 
-    let keywords = match keywords_path {
-        Some(kw_path) => {
-            let kw_text = match std::fs::read_to_string(kw_path) {
+    let vocab = match vocabulary_path {
+        Some(vocab_path) => {
+            let vocab_text = match std::fs::read_to_string(vocab_path) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("error: cannot read `{kw_path}`: {e}");
+                    eprintln!("error: cannot read `{vocab_path}`: {e}");
                     std::process::exit(1);
                 }
             };
-            // A translation error renders against the keyword file itself, not
-            // the program that would have used it.
+            // A translation error renders against the vocabulary file itself,
+            // not the program that would have used it.
             stage(
-                translations::parse_keyword_file(&kw_text),
-                kw_path,
-                &kw_text,
+                translations::parse_vocabulary(&vocab_text),
+                vocab_path,
+                &vocab_text,
             )
         }
-        None => lexer::default_keywords(),
+        None => Vocabulary::english(),
     };
+    let vocab = Rc::new(vocab);
 
     let tokens = stage(
-        Lexer::with_keywords(&source, keywords).tokenize(),
+        Lexer::with_keywords(&source, vocab.keywords.clone()).tokenize(),
         path,
         &source,
     );
-    let program = stage(Parser::new(tokens).parse_program(), path, &source);
+    let program = stage(
+        Parser::with_vocabulary(tokens, vocab.clone()).parse_program(),
+        path,
+        &source,
+    );
     let mut map = diagnostics::SourceMap::new(path, &source);
     let program = stage_mapped(
-        resolver::resolve_imports(program, std::path::Path::new(path), &mut map),
+        resolver::resolve_imports(program, std::path::Path::new(path), &mut map, &vocab),
         &map,
     );
-    stage_mapped(TypeChecker::new().check_program(&program), &map);
-    stage_mapped(Interpreter::new().run_program(&program), &map);
+    stage_mapped(
+        TypeChecker::with_vocabulary(vocab.clone()).check_program(&program),
+        &map,
+    );
+    stage_mapped(
+        Interpreter::with_vocabulary(vocab).run_program(&program),
+        &map,
+    );
 }

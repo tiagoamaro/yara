@@ -23,10 +23,16 @@ end-to-end `tests/` possible (a binary-only crate can't be `use`d from tests).
   `yara::<module>` from both the binary and the integration tests.
 
 - **`main.rs`** — the binary crate root: a thin CLI over the library. Parses
-  `yara run <file> [--keywords <path>]`, reads the source (and optional keyword
-  file), and runs the stages via a `stage(...)` helper (lex/parse/translation errors
-  only) and `stage_mapped(...)` helper (resolver/typechecker/interpreter errors with
-  `diagnostics::render_with_map`). The `SourceMap` is built after parsing, seeded
+  `yara run <file> [--vocabulary <path>]` (`--keywords <path>` still accepted as an
+  alias for backward compatibility — both flags are parsed by the same
+  `parse_vocabulary_flag`), reads the source (and optional vocabulary file via
+  `translations::parse_vocabulary`, building a full `Rc<Vocabulary>` rather than a bare
+  keyword map), and runs the stages via a `stage(...)` helper (lex/parse/translation
+  errors only) and `stage_mapped(...)` helper (resolver/typechecker/interpreter errors
+  with `diagnostics::render_with_map`). The same `Rc<Vocabulary>` is threaded into
+  `Lexer::with_keywords`, `Parser::with_vocabulary`, `resolver::resolve_imports`,
+  `TypeChecker::with_vocabulary`, and `Interpreter::with_vocabulary` — one vocabulary
+  governs every stage of a given run. The `SourceMap` is built after parsing, seeded
   with the entry file path and source, then passed to the resolver; the resolver
   registers each imported file in the map and shifts their AST line numbers into a
   virtual line space, so error positions in imported code map back to the correct file

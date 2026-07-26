@@ -12,7 +12,8 @@ pub(crate) fn eval_primitive_method(
     line: usize,
     column: usize,
 ) -> Result<Value, RuntimeError> {
-    let m = crate::methods::lookup(kind, method).ok_or_else(|| RuntimeError {
+    let canonical_method = interp.vocab.canonical_method(method);
+    let m = crate::methods::lookup(kind, &canonical_method).ok_or_else(|| RuntimeError {
         message: format!("no method `{method}` for this value"),
         line,
         column,

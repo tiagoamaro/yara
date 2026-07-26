@@ -40,7 +40,8 @@ fn run_source(
         .parse_program()
         .map_err(|e| (Stage::Parse, e.message))?;
     let mut map = yara::diagnostics::SourceMap::new(&path.display().to_string(), source);
-    let program = resolver::resolve_imports(program, path, &mut map)
+    let vocab = std::rc::Rc::new(translations::Vocabulary::english());
+    let program = resolver::resolve_imports(program, path, &mut map, &vocab)
         .map_err(|e| (Stage::Import, e.message))?;
     TypeChecker::new()
         .check_program(&program)

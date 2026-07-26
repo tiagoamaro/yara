@@ -13,7 +13,8 @@ pub(super) fn check_primitive_method(
     line: usize,
     column: usize,
 ) -> Result<Type, TypeError> {
-    let Some(m) = crate::methods::lookup(kind, method) else {
+    let canonical_method = checker.vocab.canonical_method(method);
+    let Some(m) = crate::methods::lookup(kind, &canonical_method) else {
         return Err(TypeError {
             message: format!(
                 "`{object_ty}` has no method `{method}` (available: {})",

@@ -315,7 +315,7 @@ impl Interpreter {
         line: usize,
         column: usize,
     ) -> Result<Option<Value>, RuntimeError> {
-        let Some(builtin) = builtins::lookup(callee) else {
+        let Some(builtin) = builtins::lookup(&self.vocab.canonical_builtin(callee)) else {
             return Ok(None);
         };
         (builtin.eval)(self, args, line, column).map(Some)
@@ -406,7 +406,7 @@ impl Interpreter {
         line: usize,
         column: usize,
     ) -> Result<Value, RuntimeError> {
-        if callee == "print" {
+        if self.vocab.canonical_builtin(callee) == "print" {
             let mut parts = Vec::new();
             for a in args {
                 parts.push(self.eval_expr(a)?.to_string());

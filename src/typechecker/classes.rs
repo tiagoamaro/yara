@@ -498,7 +498,7 @@ fn check_construction(
     line: usize,
     column: usize,
 ) -> Result<Type, TypeError> {
-    if method != "new" {
+    if checker.vocab.canonical_method(method) != "new" {
         return Err(TypeError {
             message: format!("class `{class_name}` has no static method `{method}`"),
             line,

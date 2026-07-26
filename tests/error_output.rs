@@ -41,7 +41,8 @@ fn rendered_error(path: &Path) -> Option<String> {
         Err(e) => return Some(render(&e)),
     };
     let mut map = SourceMap::new(path_str, &source);
-    let program = match resolver::resolve_imports(program, path, &mut map) {
+    let vocab = std::rc::Rc::new(yara::translations::Vocabulary::english());
+    let program = match resolver::resolve_imports(program, path, &mut map, &vocab) {
         Ok(p) => p,
         Err(e) => return Some(diagnostics::render_with_map(&e, &map)),
     };

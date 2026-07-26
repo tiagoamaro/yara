@@ -55,7 +55,7 @@ pub(super) fn check_call(
     line: usize,
     column: usize,
 ) -> Result<Type, TypeError> {
-    if callee == "print" {
+    if checker.vocab.canonical_builtin(callee) == "print" {
         for a in args {
             super::expressions::check_expr(checker, a)?;
         }
@@ -335,7 +335,7 @@ fn check_array_builtin(
     line: usize,
     column: usize,
 ) -> Result<Option<Type>, TypeError> {
-    let Some(builtin) = crate::builtins::lookup(callee) else {
+    let Some(builtin) = crate::builtins::lookup(&checker.vocab.canonical_builtin(callee)) else {
         return Ok(None);
     };
     // Arity is checked once here from the registry; the function pointer
