@@ -1,0 +1,5 @@
+runtime error: cannot parse `abc` as an Integer
+  --> examples/errors/string_to_i_invalid.yara:3:15
+  |
+3 | n: Integer = s.to_i()
+  |               ^

@@ -6,6 +6,7 @@ import "control_flow"
 import "loops"
 import "recursion"
 import "constants"
+import "methods"
 
 # Pointers. Only the examples whose output doesn't depend on the shared heap:
 # imports splice into one program, so `gc.yara`/`free_then_collect.yara` would
