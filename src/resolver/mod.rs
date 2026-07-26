@@ -43,6 +43,23 @@ impl crate::diagnostics::Diagnostic for ResolveError {
 /// `Stmt::Import` replaced by the imported file's own (recursively resolved)
 /// statements.
 ///
+/// ```mermaid
+/// flowchart TD
+///     A["Vec&lt;Stmt&gt; (entry program)"] --> B["resolve_imports:<br/>seed cycle-set with current_file"]
+///     B --> C["resolve(program, dir, map, cycle-set, vocab)"]
+///     C --> D{"walk stmts"}
+///     D -->|"Stmt::Import(path)"| E["resolve_import_path<br/>(relative to importing file, + .yara)"]
+///     E --> F{"already in<br/>cycle-set?"}
+///     F -->|yes| G["ResolveError:<br/>import cycle detected"]
+///     F -->|no| H["read file, Lexer::with_vocabulary<br/>+ Parser::with_vocabulary(vocab)"]
+///     H --> I["map.add_file(path, source)<br/>-&gt; virtual line offset"]
+///     I --> J["Stmt::shift_lines(offset)<br/>on imported AST"]
+///     J --> K["resolve(imported program, ...)<br/>(recursive)"]
+///     K --> L["splice resolved stmts<br/>in place of Stmt::Import"]
+///     D -->|"other stmt"| L
+///     L --> M["Vec&lt;Stmt&gt; / ResolveError"]
+/// ```
+///
 /// `current_file` is used to resolve relative import paths and to detect
 /// import cycles. Before delegating to [`resolve`], this seeds the
 /// cycle-detection set with `current_file`'s own canonicalized path, so that

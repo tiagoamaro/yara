@@ -164,6 +164,21 @@ enum Flow {
     Return(Value),
 }
 
+/// ```mermaid
+/// flowchart TD
+///     A["Vec&lt;Stmt&gt; (typechecked program)"] --> B["run_program"]
+///     B --> C["pass 1: build each<br/>class's own ClassDecl"]
+///     C --> D["pass 2: flatten_classes<br/>(merge parent const_inits/<br/>field_names/methods, child wins)"]
+///     D --> E["pass 3: collect top-level fns<br/>+ exec_stmt over top-level stmts"]
+///     E --> F["eval_expr"]
+///     F -->|"Expr::Call"| G["call_function:<br/>print / array+ptr builtins<br/>(calls.rs) / user function"]
+///     F -->|"Expr::MethodCall,<br/>object = class name"| H["construct<br/>(ClassName.new,<br/>classes.rs)"]
+///     F -->|"Expr::MethodCall,<br/>object: Instance"| I["call_method -&gt; run_method<br/>(copy fields in, exec body,<br/>copy fields back)"]
+///     F -->|"Expr::MethodCall,<br/>object: primitive"| J["methods::ReceiverKind::of_value<br/>-&gt; eval_primitive_method<br/>(interpreter/methods.rs)"]
+///     G -->|"alloc/deref/set_deref/free"| K["heap: Vec&lt;Option&lt;Value&gt;&gt;<br/>(heap_read/heap_write/heap_free)"]
+///     G -->|"collect()"| L["collect_garbage:<br/>mark_value from every env<br/>scope root, sweep unmarked"]
+///     E --> M["Ok(()) / RuntimeError<br/>(+ call_stack trace)"]
+/// ```
 #[derive(Debug)]
 pub struct Interpreter {
     /// Lexical scope stack mapping in-scope names to their runtime `Value`

@@ -6,6 +6,7 @@ Tokenizes Yara source text into a `Vec<Token>` (or streaming iterator).
 Implemented. `Lexer::new(source).tokenize() -> Result<Vec<Token>, LexError>`, or `Lexer::with_vocabulary(source, Rc<Vocabulary>)` to also localize error-message prose (see Design below) — `::new()`/`::with_keywords()` are lighter-weight constructors that keep error messages in English regardless of any keyword translation.
 
 ## Design
+- `mod.rs` carries a `///` mermaid flowchart on `Lexer` showing the per-character dispatch loop (digit/quote/letter/operator/whitespace) and the `new`/`with_keywords`-vs-`with_vocabulary` constructor split — keep it in sync with `tokenize`'s dispatch when that changes.
 - `Token { kind: TokenKind, line, column }`, 1-indexed position from the start of the token.
 - `TokenKind` covers literals (Int/Float/Str/Bool), identifiers, keywords (`def end if elsif else while for in const return nil true false`), operators (`+ - * / == != < > <= >= = := : .. ( ) ,`), `Eof`. Also carries a hand-written `impl Display` that reproduces `#[derive(Debug)]`'s exact rendering (tuple variants `Ident("foo")`, unit variants `Plus`) — used by `parser/`'s "expected X, found `{:?}`"-shaped errors so they can build a `vocab.msg` argument via `.to_string()` without changing the rendered text.
 - Comments (`#...`) and whitespace skipped in `skip_whitespace_and_comments`.

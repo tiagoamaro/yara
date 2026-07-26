@@ -40,6 +40,20 @@ impl crate::diagnostics::Diagnostic for ParseError {
 /// through `peek`/`advance`, so `pos` is the single source of truth for where
 /// parsing is. Because it's just an integer, it can be saved and restored
 /// (see `parse_ident_stmt`'s checkpoint/rewind) to support limited backtracking.
+///
+/// ```mermaid
+/// flowchart TD
+///     A["Vec&lt;Token&gt;"] --> B{"constructor"}
+///     B -->|"new (vocab = English)"| C
+///     B -->|"with_vocabulary(vocab)<br/>localizes types/builtins/methods<br/>+ error prose"| C
+///     C["parse_program(): loop parse_stmt<br/>until Eof"] --> D["statements.rs: parse_stmt"]
+///     D -->|"const/class/def/if/while/for/import"| E["dedicated parse_* fn"]
+///     D -->|"identifier lead-in"| F["parse_ident_stmt<br/>(checkpoint/rewind)"]
+///     D -->|"otherwise"| G["expressions.rs: parse_expr"]
+///     G --> H["parse_comparison"] --> I["parse_additive"] --> J["parse_multiplicative"]
+///     J --> K["parse_unary"] --> L["parse_primary /<br/>parse_postfix<br/>(index/field/method chains)"]
+///     E & F & G --> M["Vec&lt;Stmt&gt; / ParseError"]
+/// ```
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,

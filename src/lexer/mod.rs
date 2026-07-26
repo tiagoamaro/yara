@@ -236,10 +236,21 @@ impl crate::diagnostics::Diagnostic for LexError {
 /// comments, or the exact spelling of a `0x`-vs-decimal number literal.
 ///
 /// ```mermaid
-/// flowchart LR
-///     A[source: &str] --> B["Lexer::new"]
-///     B --> C["Lexer::tokenize (consumes self)"]
-///     C --> D["Vec&lt;Token&gt;"]
+/// flowchart TD
+///     A[source: &str] --> B{"constructor"}
+///     B -->|"new / with_keywords<br/>(vocab = English)"| C
+///     B -->|"with_vocabulary(vocab)<br/>localizes error prose too"| C
+///     C["tokenize(): loop over chars"] --> D{next char}
+///     D -->|digit| E["read_number"]
+///     D -->|quote| F["read_string"]
+///     D -->|letter/_| G["read_ident_or_keyword<br/>(via keywords map)"]
+///     D -->|operator/punct| H["read_operator"]
+///     D -->|whitespace/#| I["skip_whitespace_and_comments"]
+///     D -->|end of input| J["emit Eof"]
+///     E & F & G & H --> K["push Token{kind,line,column}"]
+///     I --> D
+///     K --> D
+///     J --> L["Vec&lt;Token&gt; / LexError"]
 /// ```
 pub struct Lexer {
     /// The whole source file, pre-split into `char`s. A `Vec<char>` (rather

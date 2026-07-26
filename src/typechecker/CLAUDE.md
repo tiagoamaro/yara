@@ -15,6 +15,7 @@ Single-parent class inheritance with flattening (no `super` keyword, child must 
 - **`statements.rs`** (323 lines) — statement-level checking: `check_stmt` (main recursive dispatcher over all `Stmt` variants), `check_block` (block type checking), `check_body_return_type` (function body return type), `check_tail_stmt` (tail-position statement type), `combine_tail_types` (branch type reconciliation).
 
 ## Design
+- `mod.rs` carries a `///` mermaid flowchart on `TypeChecker` showing `check_program`'s pass structure (class collection/flattening, function-signature pre-pass, method body checks, `check_expr`'s call/construction/method dispatch) — keep it in sync when the pass order or dispatch changes.
 - `Type` enum: `Integer, Float, Boolean, String, Nil, Array(Box<Type>), Instance(String), Pointer(Box<Type>)` — the canonical (post-alias-normalization) names from `ast::TypeAnnotation`.
 - **Classes & Inheritance**: `ClassInfo { fields: HashMap<String, Type>, methods: HashMap<String, FunctionSig> }` per class name in `self.classes`, built by `collect_classes` in three passes:
   - **Pass 1**: Register every class *name* with an empty `ClassInfo` (so annotations can reference any class regardless of declaration order, including self-reference).

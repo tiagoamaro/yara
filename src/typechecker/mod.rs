@@ -158,6 +158,22 @@ struct ClassInfo {
     methods: HashMap<String, FunctionSig>,
 }
 
+/// ```mermaid
+/// flowchart TD
+///     A["Vec&lt;Stmt&gt; (resolved program)"] --> B["check_program"]
+///     B --> C["collect_classes: pass 1<br/>register class names"]
+///     C --> D["collect_classes: pass 2<br/>fill own fields/methods"]
+///     D --> E["collect_classes: pass 3<br/>flatten_inheritance<br/>(merge parent members,<br/>detect unknown parent / cycle)"]
+///     E --> F["collect_function_signatures<br/>(top-level fn pre-pass)"]
+///     F --> G["check_classes:<br/>check_fields_assigned_in_initializer<br/>+ check each method body"]
+///     G --> H["check_stmt over top-level stmts"]
+///     H --> I["check_expr"]
+///     I -->|"Expr::Call"| J["check_call:<br/>print / array+ptr builtins<br/>/ user function"]
+///     I -->|"Expr::MethodCall,<br/>object = class name"| K["check_construction<br/>(ClassName.new)"]
+///     I -->|"Expr::MethodCall,<br/>object: Instance"| L["class method lookup<br/>(flattened methods map)"]
+///     I -->|"Expr::MethodCall,<br/>object: primitive"| M["methods::ReceiverKind::of_type<br/>-&gt; check_primitive_method<br/>(src/typechecker/methods.rs)"]
+///     H --> N["Ok(()) / TypeError"]
+/// ```
 pub struct TypeChecker {
     /// Lexical scope stack mapping in-scope names to their static `Type`
     /// (see [`Environment`]); the runtime interpreter uses the same structure

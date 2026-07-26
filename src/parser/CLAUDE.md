@@ -11,6 +11,7 @@ Implemented. `Parser::new(tokens).parse_program() -> Result<Vec<Stmt>, ParseErro
 - **`expressions.rs`** (~210 lines) — expression parsing via precedence climbing: `parse_expr`, `parse_comparison`, `parse_additive`, `parse_multiplicative`, `parse_unary`, `parse_primary`, `parse_postfix`, `parse_primary_base`.
 
 ## Design
+- `mod.rs` carries a `///` mermaid flowchart on `Parser` showing `parse_program`'s statement dispatch and the precedence-climbing chain — keep it in sync with `statements.rs`/`expressions.rs` when the dispatch changes.
 - Precedence climbing via chained methods: `parse_comparison` -> `parse_additive` -> `parse_multiplicative` -> `parse_unary` -> `parse_primary`. `parse_unary` handles prefix `-` (`UnOp::Neg`), right-recursive so `--x` parses (typechecker/interpreter will happily double-negate).
 - `import "path"` parsed by `parse_import`: keyword then a required string-literal token, no `end`. See `resolver` for what actually happens with it.
 - `parse_ident_stmt` disambiguates `x = expr` / `x: Type = expr` var-decl from a bare expression statement (e.g. a call `foo()`) by checkpointing `self.pos` and rewinding if no `:`/`=` follows the identifier.
