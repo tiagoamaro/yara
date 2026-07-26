@@ -3,6 +3,7 @@
 use crate::ast::{BinOp, Expr, Stmt, UnOp};
 use crate::builtins;
 use crate::env::Environment;
+use crate::translations::Vocabulary;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -174,6 +175,7 @@ pub struct Interpreter {
     call_stack: Vec<StackFrame>,
     /// The modeled heap for `alloc`/`deref`/`set_deref`/`free`: one slot per allocation; `None` marks a freed slot (slots are never reused, so a stale pointer reliably reports use-after-free instead of aliasing a new allocation).
     heap: Vec<Option<Value>>,
+    pub(crate) vocab: Rc<Vocabulary>,
 }
 
 impl Default for Interpreter {
@@ -184,12 +186,21 @@ impl Default for Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
+        Self::with_vocabulary(Rc::new(Vocabulary::english()))
+    }
+
+    /// An interpreter that recognizes `vocab`'s localized builtin/method/`print`
+    /// spellings in addition to their canonical English names — same pattern as
+    /// `TypeChecker::with_vocabulary`. See the hook points in `calls.rs`/
+    /// `methods.rs`.
+    pub fn with_vocabulary(vocab: Rc<Vocabulary>) -> Self {
         Interpreter {
             env: Environment::new(),
             functions: HashMap::new(),
             classes: HashMap::new(),
             call_stack: Vec::new(),
             heap: Vec::new(),
+            vocab,
         }
     }
 

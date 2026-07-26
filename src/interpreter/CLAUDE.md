@@ -3,7 +3,7 @@
 Tree-walk evaluator executing a typechecked AST.
 
 ## Status
-Implemented. `Interpreter::new().run_program(&[Stmt]) -> Result<(), RuntimeError>`. Wired into `main.rs` (`yara run <file>` executes lexer to parser to typechecker to interpreter in sequence, bailing with the first error).
+Implemented. `Interpreter::new().run_program(&[Stmt]) -> Result<(), RuntimeError>`, or `Interpreter::with_vocabulary(Rc<Vocabulary>)` to recognize a localized vocabulary's builtin/method/`print` spellings (see Design below) — `::new()` is just `::with_vocabulary(Rc::new(Vocabulary::english()))`. Wired into `main.rs` (`yara run <file>` executes lexer to parser to resolver to typechecker to interpreter in sequence, bailing with the first error; the same `Rc<Vocabulary>` built from `--vocabulary`/`--keywords` flows into every stage).
 
 ## Layout
 Split into submodules for cohesive organization (behavior-preserving refactor):
@@ -32,7 +32,7 @@ Split into submodules for cohesive organization (behavior-preserving refactor):
 - Function calls: `call_function` pushes a `StackFrame { function_name, line, column }` onto `call_stack` before executing the body and pops it after — this is what populates `RuntimeError.call_stack` for the trace.
 - **Implicit last-expression return** (Ruby-style): `exec_function_body` delegates its trailing statement to `exec_tail_stmt`, which special-cases `Stmt::ExprStmt` (evaluate directly) and trailing `if`/`elsif`/`else` (recurse into whichever branch's body via `exec_function_body` again, so a nested trailing `if` inside that branch also works) to become the call's value — mirroring `typechecker::check_tail_stmt`/`check_body_return_type`. If these two ever diverge, return-value bugs slip past the typechecker. Explicit `return expr` still works via `Flow::Return` short-circuiting through `exec_block`.
 - Unary negation (`-x`): `Integer` and `Float` only; anything else is a `RuntimeError` (typechecker should already have rejected it, this is a defense-in-depth check).
-- `print(...)` is a built-in special-cased in `call_function` (joins args with a space via `Value`'s `Display`, `println!`s), same ad-hoc pattern as the typechecker's `print` handling — keep both in sync if a real stdlib/builtin registry replaces this.
+- `print(...)` is a built-in special-cased in `call_function` (joins args with a space via `Value`'s `Display`, `println!`s), same ad-hoc pattern as the typechecker's `print` handling — keep both in sync if a real stdlib/builtin registry replaces this. The `callee == "print"` comparison and the `builtins::lookup(callee)` call in `call_array_builtin` both normalize `callee` through `self.vocab.canonical_builtin(callee)` first, so a localized vocabulary's `print`/builtin spellings resolve identically to their English names. `eval_primitive_method` (`methods.rs`) does the same via `interp.vocab.canonical_method(method)` before `methods::lookup`. The typechecker has an equivalent `vocab.canonical_method(method) == "new"` check in `check_construction` (`src/typechecker/classes.rs`) for localized `.new` spellings; the interpreter needs no equivalent since `Expr::MethodCall`'s bare-class-ident dispatch goes straight to `construct` without checking the method name at all (the typechecker already validated it).
 - `RuntimeError::Display` prints rustc-adjacent multi-line output: message, `at line:column`, then each call-stack frame reversed (innermost first).
 
 ## Gotchas

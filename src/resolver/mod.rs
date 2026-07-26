@@ -5,9 +5,11 @@ use crate::ast::Stmt;
 use crate::diagnostics::SourceMap;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::translations::Vocabulary;
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolveError {
@@ -58,12 +60,13 @@ pub fn resolve_imports(
     program: Vec<Stmt>,
     current_file: &Path,
     map: &mut SourceMap,
+    vocab: &Rc<Vocabulary>,
 ) -> Result<Vec<Stmt>, ResolveError> {
     let mut visited = HashSet::new();
     if let Ok(canonical) = current_file.canonicalize() {
         visited.insert(canonical);
     }
-    resolve(program, current_file, &mut visited, map)
+    resolve(program, current_file, &mut visited, map, vocab)
 }
 
 /// Recursive worker behind [`resolve_imports`]. Walks `program`'s top-level
@@ -84,6 +87,7 @@ fn resolve(
     current_file: &Path,
     visited: &mut HashSet<PathBuf>,
     map: &mut SourceMap,
+    vocab: &Rc<Vocabulary>,
 ) -> Result<Vec<Stmt>, ResolveError> {
     let mut resolved = Vec::with_capacity(program.len());
     for stmt in program {
@@ -108,19 +112,20 @@ fn resolve(
                     line,
                     column,
                 })?;
-                let tokens = Lexer::new(&source).tokenize().map_err(|e| ResolveError {
-                    message: format!("lex error in `{}`: {e}", target.display()),
-                    line,
-                    column,
-                })?;
-                let mut imported_program =
-                    Parser::new(tokens)
-                        .parse_program()
-                        .map_err(|e| ResolveError {
-                            message: format!("parse error in `{}`: {e}", target.display()),
-                            line,
-                            column,
-                        })?;
+                let tokens = Lexer::with_keywords(&source, vocab.keywords.clone())
+                    .tokenize()
+                    .map_err(|e| ResolveError {
+                        message: format!("lex error in `{}`: {e}", target.display()),
+                        line,
+                        column,
+                    })?;
+                let mut imported_program = Parser::with_vocabulary(tokens, vocab.clone())
+                    .parse_program()
+                    .map_err(|e| ResolveError {
+                        message: format!("parse error in `{}`: {e}", target.display()),
+                        line,
+                        column,
+                    })?;
 
                 // Register the file in the source map and shift its AST
                 // positions into the virtual line range it was assigned, so
@@ -131,7 +136,7 @@ fn resolve(
                     stmt.shift_lines(offset);
                 }
 
-                let nested = resolve(imported_program, &target, visited, map)?;
+                let nested = resolve(imported_program, &target, visited, map, vocab)?;
                 resolved.extend(nested);
             }
             other => resolved.push(other),
@@ -195,7 +200,8 @@ mod tests {
         let main_src = std::fs::read_to_string(&main_path).unwrap();
         let program = parse_src(&main_src);
         let mut map = SourceMap::new(main_path.to_str().unwrap(), &main_src);
-        let resolved = resolve_imports(program, &main_path, &mut map).unwrap();
+        let vocab = Rc::new(Vocabulary::english());
+        let resolved = resolve_imports(program, &main_path, &mut map, &vocab).unwrap();
 
         assert_eq!(resolved.len(), 2);
         assert!(matches!(resolved[0], Stmt::FunctionDef { .. }));
@@ -226,7 +232,8 @@ mod tests {
         let main_src = std::fs::read_to_string(&main_path).unwrap();
         let program = parse_src(&main_src);
         let mut map = SourceMap::new(main_path.to_str().unwrap(), &main_src);
-        let err = resolve_imports(program, &main_path, &mut map).unwrap_err();
+        let vocab = Rc::new(Vocabulary::english());
+        let err = resolve_imports(program, &main_path, &mut map, &vocab).unwrap_err();
         assert!(err.message.contains("cycle"));
 
         std::fs::remove_dir_all(&dir).ok();
@@ -245,7 +252,8 @@ mod tests {
         let main_src = std::fs::read_to_string(&main_path).unwrap();
         let program = parse_src(&main_src);
         let mut map = SourceMap::new(main_path.to_str().unwrap(), &main_src);
-        let err = resolve_imports(program, &main_path, &mut map).unwrap_err();
+        let vocab = Rc::new(Vocabulary::english());
+        let err = resolve_imports(program, &main_path, &mut map, &vocab).unwrap_err();
         assert_eq!(err.line, 1);
         assert_eq!(err.column, 1);
 

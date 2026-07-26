@@ -3,10 +3,11 @@
 Resolves `import "path"` statements before typechecking/interpretation.
 
 ## Status
-Implemented. `resolve_imports(program: Vec<Stmt>, current_file: &Path, map: &mut diagnostics::SourceMap) -> Result<Vec<Stmt>, ResolveError>`.
+Implemented. `resolve_imports(program: Vec<Stmt>, current_file: &Path, map: &mut diagnostics::SourceMap, vocab: &Rc<Vocabulary>) -> Result<Vec<Stmt>, ResolveError>`.
 
 ## Design
 - `import "path"` is parsed by `parser` into `Stmt::Import { path, line, column }` — a normal AST node — but `typechecker` and `interpreter` only ever see it as a no-op (`Stmt::Import { .. }` arm); real handling happens here, between parsing and typechecking, wired in `main.rs::run_file`.
+- Every imported file is lexed and parsed with the *same* `Rc<Vocabulary>` as the entry file (`Lexer::with_keywords(&source, vocab.keywords.clone())` + `Parser::with_vocabulary(tokens, vocab.clone())`, threaded as a `&Rc<Vocabulary>` parameter through `resolve_imports`/`resolve`) — a localized program's imports are written in the same localized vocabulary, not forced back to English.
 - Import paths are resolved relative to the *importing file's* directory, with `.yara` appended if the path has no extension (`resolve_import_path`). No search path / stdlib directory concept yet — everything is relative-to-file.
 - Recursion: an imported file's own `import`s are resolved too (`resolve` calls itself), so imports can chain.
 - Cycle detection: a `HashSet<PathBuf>` of canonicalized paths, seeded with the entry file, threaded through the recursion; re-visiting a path is a `ResolveError`.
