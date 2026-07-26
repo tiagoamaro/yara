@@ -1,0 +1,5 @@
+type error: `Integer` has no method `nope` (available: to_s, to_f, abs)
+  --> examples/errors/method_unknown_on_primitive.yara:3:2
+  |
+3 | x.nope()
+  |  ^

@@ -126,12 +126,14 @@ fn every_error_example_fails_at_expected_stage() {
             | "class_unassigned_field"
             | "class_unknown_field"
             | "class_wrong_arg_count"
-            | "class_inherited_field_unassigned" => Stage::Type,
+            | "class_inherited_field_unassigned"
+            | "method_unknown_on_primitive" => Stage::Type,
             "array_out_of_bounds"
             | "runtime_error_stack_trace"
             | "use_after_free"
             | "double_free"
-            | "nil_pointer_deref" => Stage::Runtime,
+            | "nil_pointer_deref"
+            | "string_to_i_invalid" => Stage::Runtime,
             other => panic!("no expected stage recorded for error example `{other}` — add one"),
         }
     }
@@ -187,6 +189,64 @@ fn every_builtin_is_handled_by_both_stages() {
             panic!(
                 "builtin `{}` is not handled at {stage:?}: {msg}",
                 builtin.name
+            );
+        }
+    }
+}
+
+/// Every method in the `methods` registry must be wired into *both* stages: a
+/// valid call to it should type-check and run without landing on "undefined
+/// method". Guards against adding a `METHODS` entry (or a typecheck/eval arm)
+/// without the matching arm in the other stage. A new method forces a new probe
+/// snippet here, which by construction exercises both stages.
+#[test]
+fn every_method_is_handled_by_both_stages() {
+    fn probe(receiver: yara::methods::ReceiverKind, name: &str, arity: usize) -> String {
+        match (receiver, name, arity) {
+            // Array methods
+            (yara::methods::ReceiverKind::Array, "size", 0) => "xs: IntArray = [1]\nn: Integer = xs.size()\n".to_string(),
+            (yara::methods::ReceiverKind::Array, "push", 1) => "xs: IntArray = [1]\nxs.push(2)\n".to_string(),
+            (yara::methods::ReceiverKind::Array, "get", 1) => "xs: IntArray = [1]\nx: Integer = xs.get(0)\n".to_string(),
+            (yara::methods::ReceiverKind::Array, "set", 2) => "xs: IntArray = [1]\nxs.set(0, 9)\n".to_string(),
+            (yara::methods::ReceiverKind::Array, "pop", 0) => "xs: IntArray = [1]\ny: Integer = xs.pop()\n".to_string(),
+            (yara::methods::ReceiverKind::Array, "is_empty", 0) => "xs: IntArray = [1]\nflag: Boolean = xs.is_empty()\n".to_string(),
+            // String methods
+            (yara::methods::ReceiverKind::String, "size", 0) => "s: Str = \"hi\"\nn: Integer = s.size()\n".to_string(),
+            (yara::methods::ReceiverKind::String, "upper", 0) => "s: Str = \"hi\"\nup: Str = s.upper()\n".to_string(),
+            (yara::methods::ReceiverKind::String, "lower", 0) => "s: Str = \"HI\"\nlo: Str = s.lower()\n".to_string(),
+            (yara::methods::ReceiverKind::String, "trim", 0) => "s: Str = \"  hi  \"\nt: Str = s.trim()\n".to_string(),
+            (yara::methods::ReceiverKind::String, "is_empty", 0) => "s: Str = \"hi\"\nflag: Boolean = s.is_empty()\n".to_string(),
+            (yara::methods::ReceiverKind::String, "to_i", 0) => "s: Str = \"42\"\nn: Integer = s.to_i()\n".to_string(),
+            (yara::methods::ReceiverKind::String, "to_f", 0) => "s: Str = \"3.14\"\nf: Float = s.to_f()\n".to_string(),
+            (yara::methods::ReceiverKind::String, "to_s", 0) => "s: Str = \"hi\"\nresult: Str = s.to_s()\n".to_string(),
+            // Integer methods
+            (yara::methods::ReceiverKind::Integer, "to_s", 0) => "x: Integer = 42\ns: Str = x.to_s()\n".to_string(),
+            (yara::methods::ReceiverKind::Integer, "to_f", 0) => "x: Integer = 42\nf: Float = x.to_f()\n".to_string(),
+            (yara::methods::ReceiverKind::Integer, "abs", 0) => "x: Integer = -5\nresult: Integer = x.abs()\n".to_string(),
+            // Float methods
+            (yara::methods::ReceiverKind::Float, "to_s", 0) => "f: Float = 3.14\ns: Str = f.to_s()\n".to_string(),
+            (yara::methods::ReceiverKind::Float, "to_i", 0) => "f: Float = 3.14\nx: Integer = f.to_i()\n".to_string(),
+            (yara::methods::ReceiverKind::Float, "abs", 0) => "f: Float = -2.5\nresult: Float = f.abs()\n".to_string(),
+            // Boolean methods
+            (yara::methods::ReceiverKind::Boolean, "to_s", 0) => "flag: Boolean = true\ns: Str = flag.to_s()\n".to_string(),
+            // Pointer methods
+            (yara::methods::ReceiverKind::Pointer, "deref", 0) => "p: Ptr<Integer> = alloc(5)\nx: Integer = p.deref()\n".to_string(),
+            (yara::methods::ReceiverKind::Pointer, "set_deref", 1) => "p: Ptr<Integer> = alloc(5)\np.set_deref(9)\n".to_string(),
+            (yara::methods::ReceiverKind::Pointer, "free", 0) => "p: Ptr<Integer> = alloc(5)\np.free()\n".to_string(),
+            _ => panic!(
+                "no probe snippet for method `{}` on {:?} with arity {arity} — add one so this test covers it",
+                name, receiver
+            ),
+        }
+    }
+
+    for method in yara::methods::METHODS {
+        let path = Path::new("examples/_method_probe.yara");
+        let source = probe(method.receiver, method.name, method.arity);
+        if let Err((stage, msg)) = run_source(&source, path, lexer::default_keywords()) {
+            panic!(
+                "method `{}` on {:?} is not handled at {stage:?}: {msg}",
+                method.name, method.receiver
             );
         }
     }
