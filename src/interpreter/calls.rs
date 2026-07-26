@@ -1,5 +1,144 @@
 use super::*;
 
+/// Reads a value from a heap slot. Returns the value if the slot is valid and
+/// allocated, or a RuntimeError if the pointer is nil, freed, or invalid.
+pub(super) fn heap_read(
+    interp: &Interpreter,
+    ptr_val: &Value,
+    line: usize,
+    column: usize,
+) -> Result<Value, RuntimeError> {
+    let idx = match ptr_val {
+        Value::Pointer(i) => *i,
+        Value::Nil => {
+            return Err(RuntimeError {
+                message: "nil pointer dereference: `deref` on `nil`".to_string(),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+        other => {
+            return Err(RuntimeError {
+                message: format!("`deref` expects a pointer, found `{other}`"),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+    };
+    match interp.heap.get(idx) {
+        Some(Some(v)) => Ok(v.clone()),
+        Some(None) => Err(RuntimeError {
+            message: format!("use after free: pointer ptr#{idx} was already freed"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+        None => Err(RuntimeError {
+            message: format!("invalid pointer ptr#{idx}"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+/// Writes a value to a heap slot. Returns () if successful, or a RuntimeError
+/// if the pointer is nil, freed, or invalid.
+pub(super) fn heap_write(
+    interp: &mut Interpreter,
+    ptr_val: &Value,
+    new_val: Value,
+    line: usize,
+    column: usize,
+) -> Result<(), RuntimeError> {
+    let idx = match ptr_val {
+        Value::Pointer(i) => *i,
+        Value::Nil => {
+            return Err(RuntimeError {
+                message: "nil pointer dereference: `set_deref` on `nil`".to_string(),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+        other => {
+            return Err(RuntimeError {
+                message: format!("`set_deref` expects a pointer, found `{other}`"),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+    };
+    match interp.heap.get_mut(idx) {
+        Some(Some(slot)) => {
+            *slot = new_val;
+            Ok(())
+        }
+        Some(None) => Err(RuntimeError {
+            message: format!("use after free: pointer ptr#{idx} was already freed"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+        None => Err(RuntimeError {
+            message: format!("invalid pointer ptr#{idx}"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
+/// Frees a heap slot by marking it as None. Returns () if successful, or a
+/// RuntimeError if the pointer is nil, already freed, or invalid.
+pub(super) fn heap_free(
+    interp: &mut Interpreter,
+    ptr_val: &Value,
+    line: usize,
+    column: usize,
+) -> Result<(), RuntimeError> {
+    let idx = match ptr_val {
+        Value::Pointer(i) => *i,
+        Value::Nil => {
+            return Err(RuntimeError {
+                message: "cannot `free` a nil pointer".to_string(),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+        other => {
+            return Err(RuntimeError {
+                message: format!("`free` expects a pointer, found `{other}`"),
+                line,
+                column,
+                call_stack: interp.call_stack.clone(),
+            });
+        }
+    };
+    match interp.heap.get_mut(idx) {
+        Some(Some(_)) => {
+            interp.heap[idx] = None;
+            Ok(())
+        }
+        Some(None) => Err(RuntimeError {
+            message: format!("double free: pointer ptr#{idx} was already freed"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+        None => Err(RuntimeError {
+            message: format!("invalid pointer ptr#{idx}"),
+            line,
+            column,
+            call_stack: interp.call_stack.clone(),
+        }),
+    }
+}
+
 pub(crate) fn eval_len(
     interp: &mut Interpreter,
     args: &[Expr],
@@ -130,40 +269,7 @@ pub(crate) fn eval_deref(
     column: usize,
 ) -> Result<Value, RuntimeError> {
     let ptr = interp.eval_expr(&args[0])?;
-    let idx = match ptr {
-        Value::Pointer(i) => i,
-        Value::Nil => {
-            return Err(RuntimeError {
-                message: "nil pointer dereference: `deref` on `nil`".to_string(),
-                line,
-                column,
-                call_stack: interp.call_stack.clone(),
-            });
-        }
-        other => {
-            return Err(RuntimeError {
-                message: format!("`deref` expects a pointer, found `{other}`"),
-                line,
-                column,
-                call_stack: interp.call_stack.clone(),
-            });
-        }
-    };
-    match interp.heap.get(idx) {
-        Some(Some(v)) => Ok(v.clone()),
-        Some(None) => Err(RuntimeError {
-            message: format!("use after free: pointer ptr#{idx} was already freed"),
-            line,
-            column,
-            call_stack: interp.call_stack.clone(),
-        }),
-        None => Err(RuntimeError {
-            message: format!("invalid pointer ptr#{idx}"),
-            line,
-            column,
-            call_stack: interp.call_stack.clone(),
-        }),
-    }
+    heap_read(interp, &ptr, line, column)
 }
 
 pub(crate) fn eval_set_deref(
@@ -174,43 +280,8 @@ pub(crate) fn eval_set_deref(
 ) -> Result<Value, RuntimeError> {
     let ptr = interp.eval_expr(&args[0])?;
     let new_value = interp.eval_expr(&args[1])?;
-    let idx = match ptr {
-        Value::Pointer(i) => i,
-        Value::Nil => {
-            return Err(RuntimeError {
-                message: "nil pointer dereference: `set_deref` on `nil`".to_string(),
-                line,
-                column,
-                call_stack: interp.call_stack.clone(),
-            });
-        }
-        other => {
-            return Err(RuntimeError {
-                message: format!("`set_deref` expects a pointer, found `{other}`"),
-                line,
-                column,
-                call_stack: interp.call_stack.clone(),
-            });
-        }
-    };
-    match interp.heap.get_mut(idx) {
-        Some(Some(slot)) => {
-            *slot = new_value;
-            Ok(Value::Nil)
-        }
-        Some(None) => Err(RuntimeError {
-            message: format!("use after free: pointer ptr#{idx} was already freed"),
-            line,
-            column,
-            call_stack: interp.call_stack.clone(),
-        }),
-        None => Err(RuntimeError {
-            message: format!("invalid pointer ptr#{idx}"),
-            line,
-            column,
-            call_stack: interp.call_stack.clone(),
-        }),
-    }
+    heap_write(interp, &ptr, new_value, line, column)?;
+    Ok(Value::Nil)
 }
 
 pub(crate) fn eval_free(
@@ -220,43 +291,8 @@ pub(crate) fn eval_free(
     column: usize,
 ) -> Result<Value, RuntimeError> {
     let ptr = interp.eval_expr(&args[0])?;
-    let idx = match ptr {
-        Value::Pointer(i) => i,
-        Value::Nil => {
-            return Err(RuntimeError {
-                message: "cannot `free` a nil pointer".to_string(),
-                line,
-                column,
-                call_stack: interp.call_stack.clone(),
-            });
-        }
-        other => {
-            return Err(RuntimeError {
-                message: format!("`free` expects a pointer, found `{other}`"),
-                line,
-                column,
-                call_stack: interp.call_stack.clone(),
-            });
-        }
-    };
-    match interp.heap.get_mut(idx) {
-        Some(Some(_)) => {
-            interp.heap[idx] = None;
-            Ok(Value::Nil)
-        }
-        Some(None) => Err(RuntimeError {
-            message: format!("double free: pointer ptr#{idx} was already freed"),
-            line,
-            column,
-            call_stack: interp.call_stack.clone(),
-        }),
-        None => Err(RuntimeError {
-            message: format!("invalid pointer ptr#{idx}"),
-            line,
-            column,
-            call_stack: interp.call_stack.clone(),
-        }),
-    }
+    heap_free(interp, &ptr, line, column)?;
+    Ok(Value::Nil)
 }
 
 pub(crate) fn eval_collect(

@@ -65,6 +65,11 @@ impl Interpreter {
         column: usize,
     ) -> Result<Value, RuntimeError> {
         let Value::Instance(_, class_name) = &object_val else {
+            if let Some(kind) = crate::methods::ReceiverKind::of_value(&object_val) {
+                return super::methods::eval_primitive_method(
+                    self, kind, object_val, method, args, line, column,
+                );
+            }
             return Err(RuntimeError {
                 message: format!("cannot call method `{method}` on a non-object value"),
                 line,
