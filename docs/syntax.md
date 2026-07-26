@@ -4,7 +4,7 @@ Living document, updated as the grammar stabilizes during implementation.
 
 ## Base types
 
-`Int`/`Integer`, `Float`, `Bool`/`Boolean`, `Str`/`String`, `Nil`. Short/long aliases are equivalent — normalized to one canonical form during lexing/parsing.
+`Int`/`Integer`, `Float`, `Bool`/`Boolean`, `Str`/`String`, `Nil`. Short/long aliases are equivalent — normalized to one canonical form during lexing/parsing. See `## Methods on primitives` below for method calls on these types.
 
 ## Declarations
 
@@ -67,7 +67,7 @@ set(xs, 0, 99)
 print(pop(xs))              # removes and returns the last element
 ```
 
-No generic `Array<T>` — each element type has its own concrete annotation name. No array-of-array type yet, so nested collections (e.g. adjacency lists) aren't representable; see `examples/data_structures/graph.yara` for a workaround (edge list instead of adjacency list). Arrays have reference semantics: passing one into a function shares the same backing storage, so mutations (`push`/`set`/`pop`) inside the function are visible to the caller.
+No generic `Array<T>` — each element type has its own concrete annotation name. No array-of-array type yet, so nested collections (e.g. adjacency lists) aren't representable; see `examples/data_structures/graph.yara` for a workaround (edge list instead of adjacency list). Arrays have reference semantics: passing one into a function shares the same backing storage, so mutations (`push`/`set`/`pop`) inside the function are visible to the caller. Array elements also support method-call syntax (e.g. `xs.size()`, `xs.push(4)`) as an alternative to the free-function builtins (`len(xs)`, `push(xs, 4)`); both work and call the same underlying logic.
 
 ## Classes
 
@@ -92,6 +92,8 @@ print(h.area(2.0))         # method call
 ```
 
 No class-level/static methods other than `.new`, no visibility modifiers — everything is public. Inside a method body, bare names resolve first to locals/params, then to the instance's own fields/consts (implicit `self`, no `self.`/`@` sigil needed) — this is why `count = number` inside `initializer` sets the instance variable rather than creating a local. There is no `self` *expression*, though — a method can't call one of its own class's other methods without a receiver, so intra-class method calls aren't possible yet (see `src/interpreter/CLAUDE.md`). Instance vars declared with no value (`count: Integer`) start out effectively unset until a method assigns them; reading one before that happens is a latent gap (see `src/typechecker/CLAUDE.md`). A class name doubles as its own type annotation (`h: Hello = ...`). Class instances have reference semantics like arrays: assigning `a = b` (both `Hello`) makes `a`/`b` alias the same instance.
+
+User-defined instance methods (defined in a `class` body) are distinct from the parallel registry of methods on primitive types (described in `## Methods on primitives` below). Methods cannot currently be user-defined on primitive types; the primitive-method registry is built into the compiler.
 
 ### Inheritance
 
@@ -123,6 +125,45 @@ end
 ```
 
 Single parent only (`class Child < Parent`), fields and methods inherit, no `super`, no override keyword — a child member with the same name as a parent's implicitly overrides it. Implemented by *flattening*: at class-registration time the parent's fields/methods are merged into the child's class table entry (typechecker `ClassInfo`, interpreter `ClassDecl`), so every other class feature (field access, method dispatch, `.new`) works against the child's table unchanged. Because there's no `super`, the child's `initializer` must assign every inherited non-defaulted field itself (the existing definite-assignment check now walks the parent chain too) — see `examples/objects/inheritance.yara` and the error example `examples/errors/class_inherited_field_unassigned.yara`. Unknown parent names and inheritance cycles (`A < B < A`) are typecheck-time errors.
+
+## Methods on primitives
+
+```
+xs: IntArray = [1, 2, 3]
+print(xs.size())           # 3
+xs.push(4)
+print(xs.get(0))           # 1
+xs.set(0, 99)
+print(xs.pop())            # 4
+
+x: Integer = 5
+print(x.to_s())            # "5"
+print(x.to_f())            # 5.0
+
+s: String = "  hello  "
+print(s.trim().upper())    # "HELLO"
+print(s.to_i())            # runtime error: cannot parse "  hello  " as an Integer
+
+p: Ptr<Integer> = alloc(42)
+print(p.deref())           # 42
+p.set_deref(100)
+print(p.deref())           # 100
+p.free()
+```
+
+Every primitive type — `Array`, `String`, `Integer`, `Float`, `Boolean`, `Pointer` — has an associated set of methods callable with postfix syntax (e.g. `value.method(args)`). Parentheses are always required, even for zero-argument methods (`xs.size()` not `xs.size`).
+
+Method reference (receiver kind → method → arity → return type):
+- **Array**: `size()->Integer`, `push(T)->Nil`, `get(Integer)->T`, `set(Integer,T)->Nil`, `pop()->T`, `is_empty()->Boolean`
+- **String**: `size()->Integer`, `upper()->String`, `lower()->String`, `trim()->String`, `is_empty()->Boolean`, `to_i()->Integer`, `to_f()->Float`, `to_s()->String`
+- **Integer**: `to_s()->String`, `to_f()->Float`, `abs()->Integer`
+- **Float**: `to_s()->String`, `to_i()->Integer`, `abs()->Float`
+- **Boolean**: `to_s()->String`
+- **Pointer**: `deref()->T`, `set_deref(T)->Nil`, `free()->Nil`
+
+Method calls on primitive types are type-checked and dispatched via a parallel registry (`src/methods.rs`), similar to how free-function builtins (`len(xs)`, `push(xs, v)`, ...) work. Both syntaxes coexist: `xs.size()` and `len(xs)` call the same underlying logic.
+
+Errors: an unknown method on a primitive type is a type error `` `{Type}` has no method `{method}` (available: ...) ``. Passing the wrong number of arguments to a method is a type error `` `{Type}#{method}` expects N argument(s), found M ``. String-to-number conversion methods (`to_i()`, `to_f()` on invalid input) are runtime errors: `` cannot parse `{s}` as an Integer `` or `` cannot parse `{s}` as a Float ``.
 
 ## Pointers
 
