@@ -11,14 +11,15 @@
 //! across this whole refactor: converting a `format!` call site to
 //! `vocab.msg("key", &[...])` must reproduce the old string exactly.
 //!
-//! Only a representative subset of call sites has been converted to route
-//! through this catalog so far (see `src/translations/CLAUDE.md` for the
-//! rest of the story and what remains) — every stage has at least one
-//! converted message, enough to prove the mechanism end-to-end (including a
-//! fully-Portuguese example and error golden), but the full ~138-site sweep
-//! described in the project's translation plan is not complete. Adding a new
+//! Every `format!`-built error message in `lexer/`, `parser/`, `resolver/`,
+//! and `interpreter/` has been converted to a catalog entry (see
+//! `src/translations/CLAUDE.md`); `typechecker/` and `diagnostics/` are
+//! covered separately. A handful of non-error-message `format!` call sites
+//! remain untouched on purpose (stack-frame labels like `{class}.new`,
+//! compound type-name building like `Ptr<{inner}>`, test-only scratch
+//! strings) — those aren't user-facing diagnostic prose. Adding a new
 //! catalog entry never removes a stage's ability to also just `format!` a
-//! message directly; both styles coexist during the migration.
+//! message directly; both styles coexist where conversion hasn't reached yet.
 
 /// `(key, English template)` pairs. Keys are namespaced by stage
 /// (`lex/`, `parse/`, `resolve/`, `type/`, `runtime/`) so two stages can
@@ -318,6 +319,113 @@ pub const MESSAGES: &[(&str, &str)] = &[
     ),
     ("diag/frame-in", "in"),
     ("diag/frame-at", "at"),
+    (
+        "runtime/expected-boolean-condition",
+        "expected Boolean condition, found `{0}`",
+    ),
+    ("runtime/expected-integer", "expected Integer, found `{0}`"),
+    ("runtime/cannot-negate", "cannot negate `{0}`"),
+    (
+        "runtime/field-on-non-object",
+        "cannot access field `{0}` on a non-object value",
+    ),
+    (
+        "runtime/class-has-no-field",
+        "class `{0}` has no field `{1}`",
+    ),
+    (
+        "runtime/array-index-out-of-bounds",
+        "array index {0} out of bounds (length {1})",
+    ),
+    ("runtime/cannot-index-into", "cannot index into `{0}`"),
+    ("runtime/cannot-add", "cannot add `{0}` and `{1}`"),
+    (
+        "runtime/cannot-subtract",
+        "cannot subtract `{0}` from `{1}`",
+    ),
+    ("runtime/cannot-multiply", "cannot multiply `{0}` and `{1}`"),
+    ("runtime/cannot-divide", "cannot divide `{0}` by `{1}`"),
+    ("runtime/cannot-compare", "cannot compare `{0}` and `{1}`"),
+    (
+        "runtime/deref-expects-pointer",
+        "`deref` expects a pointer, found `{0}`",
+    ),
+    (
+        "runtime/use-after-free",
+        "use after free: pointer ptr#{0} was already freed",
+    ),
+    ("runtime/invalid-pointer", "invalid pointer ptr#{0}"),
+    (
+        "runtime/set-deref-expects-pointer",
+        "`set_deref` expects a pointer, found `{0}`",
+    ),
+    (
+        "runtime/free-expects-pointer",
+        "`free` expects a pointer, found `{0}`",
+    ),
+    (
+        "runtime/double-free",
+        "double free: pointer ptr#{0} was already freed",
+    ),
+    (
+        "runtime/len-expects-array",
+        "`len` expects an array, found `{0}`",
+    ),
+    (
+        "runtime/push-expects-array",
+        "`push` expects an array, found `{0}`",
+    ),
+    (
+        "runtime/set-expects-array",
+        "`set` expects an array, found `{0}`",
+    ),
+    (
+        "runtime/pop-expects-array",
+        "`pop` expects an array, found `{0}`",
+    ),
+    ("runtime/undefined-function", "undefined function `{0}`"),
+    (
+        "runtime/method-on-non-object",
+        "cannot call method `{0}` on a non-object value",
+    ),
+    (
+        "runtime/class-has-no-method",
+        "class `{0}` has no method `{1}`",
+    ),
+    (
+        "runtime/field-assign-on-non-object",
+        "cannot assign field `{0}` on a non-object value",
+    ),
+    (
+        "runtime/cannot-parse-as-integer",
+        "cannot parse `{0}` as an Integer",
+    ),
+    (
+        "runtime/cannot-parse-as-float",
+        "cannot parse `{0}` as a Float",
+    ),
+    ("lex/invalid-float-literal", "invalid float literal `{0}`"),
+    (
+        "lex/invalid-integer-literal",
+        "invalid integer literal `{0}`",
+    ),
+    (
+        "lex/invalid-escape-sequence",
+        "invalid escape sequence `\\{0}`",
+    ),
+    ("lex/unexpected-character", "unexpected character `{0}`"),
+    ("parse/unexpected-token", "unexpected token {0}"),
+    (
+        "resolve/cannot-resolve-import",
+        "cannot resolve import `{0}`: {1}",
+    ),
+    ("resolve/import-cycle-at", "import cycle detected at `{0}`"),
+    (
+        "resolve/cannot-read-imported-file",
+        "cannot read imported file `{0}`: {1}",
+    ),
+    ("resolve/lex-error-in", "lex error in `{0}`: {1}"),
+    ("resolve/parse-error-in", "parse error in `{0}`: {1}"),
 ];
 
 /// Substitutes `{0}`, `{1}`, ... in `template` with `args`, in order.

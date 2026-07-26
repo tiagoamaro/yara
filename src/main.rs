@@ -127,7 +127,7 @@ fn run_file(path: &str, vocabulary_path: Option<&str>) {
     let vocab = Rc::new(vocab);
 
     let tokens = stage(
-        Lexer::with_keywords(&source, vocab.keywords.clone()).tokenize(),
+        Lexer::with_vocabulary(&source, vocab.clone()).tokenize(),
         path,
         &source,
     );

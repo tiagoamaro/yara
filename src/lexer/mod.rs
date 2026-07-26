@@ -1,7 +1,9 @@
 //! Tokenizer for Yara source.
 
+use crate::translations::Vocabulary;
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -50,6 +52,61 @@ pub enum TokenKind {
     Comma,
 
     Eof,
+}
+
+/// Renders a `TokenKind` for error-message interpolation (e.g. "expected
+/// `)`, found ..."). Byte-identical to what `#[derive(Debug)]` would print
+/// (tuple variants as `Ident("foo")`/`Int(5)`, unit variants as their bare
+/// name like `Plus`) — kept as a hand-written `Display` impl rather than
+/// reusing `{:?}` directly so call sites can go through `vocab.msg`, which
+/// only accepts `&str` arguments built via `Display`/`to_string`. Reproduces
+/// the derive exactly by delegating each field to `{:?}` itself (so a
+/// `Str`/`Ident` payload gets the same quote-and-escape treatment a derived
+/// `Debug` would give it).
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TokenKind::Int(v) => write!(f, "Int({v:?})"),
+            TokenKind::Float(v) => write!(f, "Float({v:?})"),
+            TokenKind::Str(v) => write!(f, "Str({v:?})"),
+            TokenKind::Bool(v) => write!(f, "Bool({v:?})"),
+            TokenKind::Ident(v) => write!(f, "Ident({v:?})"),
+            TokenKind::Def => write!(f, "Def"),
+            TokenKind::End => write!(f, "End"),
+            TokenKind::If => write!(f, "If"),
+            TokenKind::Elsif => write!(f, "Elsif"),
+            TokenKind::Else => write!(f, "Else"),
+            TokenKind::While => write!(f, "While"),
+            TokenKind::For => write!(f, "For"),
+            TokenKind::In => write!(f, "In"),
+            TokenKind::Const => write!(f, "Const"),
+            TokenKind::Return => write!(f, "Return"),
+            TokenKind::Nil => write!(f, "Nil"),
+            TokenKind::Import => write!(f, "Import"),
+            TokenKind::Class => write!(f, "Class"),
+            TokenKind::Plus => write!(f, "Plus"),
+            TokenKind::Minus => write!(f, "Minus"),
+            TokenKind::Star => write!(f, "Star"),
+            TokenKind::Slash => write!(f, "Slash"),
+            TokenKind::EqEq => write!(f, "EqEq"),
+            TokenKind::NotEq => write!(f, "NotEq"),
+            TokenKind::Lt => write!(f, "Lt"),
+            TokenKind::Gt => write!(f, "Gt"),
+            TokenKind::LtEq => write!(f, "LtEq"),
+            TokenKind::GtEq => write!(f, "GtEq"),
+            TokenKind::Eq => write!(f, "Eq"),
+            TokenKind::Colon => write!(f, "Colon"),
+            TokenKind::ColonEq => write!(f, "ColonEq"),
+            TokenKind::DotDot => write!(f, "DotDot"),
+            TokenKind::Dot => write!(f, "Dot"),
+            TokenKind::LParen => write!(f, "LParen"),
+            TokenKind::RParen => write!(f, "RParen"),
+            TokenKind::LBracket => write!(f, "LBracket"),
+            TokenKind::RBracket => write!(f, "RBracket"),
+            TokenKind::Comma => write!(f, "Comma"),
+            TokenKind::Eof => write!(f, "Eof"),
+        }
+    }
 }
 
 /// The fixed set of reserved words/literal-keywords Yara recognizes,
@@ -203,6 +260,11 @@ pub struct Lexer {
     /// is just `TokenKind::Ident`, never an error — unknown-word handling is
     /// the parser's job, not the lexer's.
     keywords: HashMap<String, KeywordToken>,
+    /// Governs error-message localization (`LexError.message` built via
+    /// `vocab.msg`). Defaults to `Vocabulary::english()` for `new`/
+    /// `with_keywords`; `with_vocabulary` is the entry point that also
+    /// localizes lexer error prose, not just keyword spellings.
+    vocab: Rc<Vocabulary>,
 }
 
 impl Lexer {
@@ -215,6 +277,8 @@ impl Lexer {
     /// Like `new`, but recognizing `keywords` (source spelling -> reserved
     /// word) instead of the English defaults — the entry point for running
     /// a program with translated keywords (see `translations::parse_keyword_file`).
+    /// Kept for source-compatibility; error messages stay English (no full
+    /// `Vocabulary` available here) — use `with_vocabulary` to localize those too.
     pub fn with_keywords(source: &str, keywords: HashMap<String, KeywordToken>) -> Self {
         Lexer {
             chars: source.chars().collect(),
@@ -222,6 +286,21 @@ impl Lexer {
             line: 1,
             column: 1,
             keywords,
+            vocab: Rc::new(Vocabulary::english()),
+        }
+    }
+
+    /// Like `with_keywords`, but threading the full `Vocabulary` through so
+    /// lexer error messages (`LexError.message`) are localized via
+    /// `vocab.msg`, not just keyword spellings.
+    pub fn with_vocabulary(source: &str, vocab: Rc<Vocabulary>) -> Self {
+        Lexer {
+            chars: source.chars().collect(),
+            pos: 0,
+            line: 1,
+            column: 1,
+            keywords: vocab.keywords.clone(),
+            vocab,
         }
     }
 
@@ -349,14 +428,14 @@ impl Lexer {
         let text: String = self.chars[start..self.pos].iter().collect();
         if is_float {
             let value = text.parse::<f64>().map_err(|_| LexError {
-                message: format!("invalid float literal `{text}`"),
+                message: self.vocab.msg("lex/invalid-float-literal", &[&text]),
                 line,
                 column,
             })?;
             Ok(TokenKind::Float(value))
         } else {
             let value = text.parse::<i64>().map_err(|_| LexError {
-                message: format!("invalid integer literal `{text}`"),
+                message: self.vocab.msg("lex/invalid-integer-literal", &[&text]),
                 line,
                 column,
             })?;
@@ -378,7 +457,7 @@ impl Lexer {
             match self.peek() {
                 None | Some('\n') => {
                     return Err(LexError {
-                        message: "unterminated string literal".to_string(),
+                        message: self.vocab.msg("lex/unterminated-string", &[]),
                         line,
                         column,
                     });
@@ -396,14 +475,16 @@ impl Lexer {
                         Some('\\') => value.push('\\'),
                         Some(other) => {
                             return Err(LexError {
-                                message: format!("invalid escape sequence `\\{other}`"),
+                                message: self
+                                    .vocab
+                                    .msg("lex/invalid-escape-sequence", &[&other.to_string()]),
                                 line,
                                 column,
                             });
                         }
                         None => {
                             return Err(LexError {
-                                message: "unterminated string literal".to_string(),
+                                message: self.vocab.msg("lex/unterminated-string", &[]),
                                 line,
                                 column,
                             });
@@ -537,7 +618,9 @@ impl Lexer {
             }
             other => {
                 return Err(LexError {
-                    message: format!("unexpected character `{other}`"),
+                    message: self
+                        .vocab
+                        .msg("lex/unexpected-character", &[&other.to_string()]),
                     line,
                     column,
                 });
@@ -558,6 +641,45 @@ mod tests {
             .into_iter()
             .map(|t| t.kind)
             .collect()
+    }
+
+    /// `TokenKind`'s hand-written `Display` must byte-match what
+    /// `#[derive(Debug)]` would print (tuple variants quote/escape their
+    /// payload, unit variants print their bare name) -- this is what lets
+    /// `parser::mod.rs`/`expressions.rs` route `{:?}`-shaped error messages
+    /// through `vocab.msg` without changing their English wording.
+    #[test]
+    fn token_kind_display_matches_derived_debug() {
+        let cases = [
+            TokenKind::Int(5),
+            TokenKind::Float(1.5),
+            TokenKind::Str("foo".to_string()),
+            TokenKind::Bool(true),
+            TokenKind::Ident("bar".to_string()),
+            TokenKind::Plus,
+            TokenKind::EqEq,
+            TokenKind::Eof,
+        ];
+        for kind in cases {
+            assert_eq!(kind.to_string(), format!("{kind:?}"));
+        }
+    }
+
+    /// A localized vocabulary's `[messages]` override reaches lexer errors
+    /// too, once `Lexer::with_vocabulary` (rather than `with_keywords`) is
+    /// used -- proves `lex/unterminated-string` is actually read from
+    /// `self.vocab` and not hardcoded.
+    #[test]
+    fn localized_vocabulary_translates_lexer_errors() {
+        use crate::translations::parse_vocabulary;
+        let vocab = std::rc::Rc::new(
+            parse_vocabulary("[messages]\nlex/unterminated-string = string nao terminada\n")
+                .unwrap(),
+        );
+        let err = Lexer::with_vocabulary("\"abc", vocab)
+            .tokenize()
+            .unwrap_err();
+        assert_eq!(err.message, "string nao terminada");
     }
 
     /// The `KEYWORDS` table must be internally consistent: no spelling and no

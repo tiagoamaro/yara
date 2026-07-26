@@ -122,7 +122,9 @@ impl Parser {
         } else {
             let tok = self.peek();
             Err(ParseError {
-                message: format!("expected {what}, found {:?}", tok.kind),
+                message: self
+                    .vocab
+                    .msg("parse/expected-found", &[what, &tok.kind.to_string()]),
                 line: tok.line,
                 column: tok.column,
             })
@@ -142,7 +144,9 @@ impl Parser {
                 Ok((name, tok.line, tok.column))
             }
             _ => Err(ParseError {
-                message: format!("expected identifier, found {:?}", tok.kind),
+                message: self
+                    .vocab
+                    .msg("parse/expected-identifier-found", &[&tok.kind.to_string()]),
                 line: tok.line,
                 column: tok.column,
             }),

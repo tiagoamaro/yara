@@ -95,34 +95,44 @@ fn resolve(
             Stmt::Import { path, line, column } => {
                 let target = resolve_import_path(current_file, &path);
                 let canonical = target.canonicalize().map_err(|e| ResolveError {
-                    message: format!("cannot resolve import `{path}`: {e}"),
+                    message: vocab.msg("resolve/cannot-resolve-import", &[&path, &e.to_string()]),
                     line,
                     column,
                 })?;
                 if !visited.insert(canonical.clone()) {
                     return Err(ResolveError {
-                        message: format!("import cycle detected at `{}`", target.display()),
+                        message: vocab
+                            .msg("resolve/import-cycle-at", &[&target.display().to_string()]),
                         line,
                         column,
                     });
                 }
 
                 let source = std::fs::read_to_string(&target).map_err(|e| ResolveError {
-                    message: format!("cannot read imported file `{}`: {e}", target.display()),
+                    message: vocab.msg(
+                        "resolve/cannot-read-imported-file",
+                        &[&target.display().to_string(), &e.to_string()],
+                    ),
                     line,
                     column,
                 })?;
-                let tokens = Lexer::with_keywords(&source, vocab.keywords.clone())
+                let tokens = Lexer::with_vocabulary(&source, vocab.clone())
                     .tokenize()
                     .map_err(|e| ResolveError {
-                        message: format!("lex error in `{}`: {e}", target.display()),
+                        message: vocab.msg(
+                            "resolve/lex-error-in",
+                            &[&target.display().to_string(), &e.to_string()],
+                        ),
                         line,
                         column,
                     })?;
                 let mut imported_program = Parser::with_vocabulary(tokens, vocab.clone())
                     .parse_program()
                     .map_err(|e| ResolveError {
-                        message: format!("parse error in `{}`: {e}", target.display()),
+                        message: vocab.msg(
+                            "resolve/parse-error-in",
+                            &[&target.display().to_string(), &e.to_string()],
+                        ),
                         line,
                         column,
                     })?;

@@ -287,7 +287,9 @@ impl Parser {
                 })
             }
             _ => Err(ParseError {
-                message: format!("unexpected token {:?}", tok.kind),
+                message: self
+                    .vocab
+                    .msg("parse/unexpected-token", &[&tok.kind.to_string()]),
                 line: tok.line,
                 column: tok.column,
             }),
