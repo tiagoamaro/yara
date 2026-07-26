@@ -69,17 +69,17 @@ pub(super) fn check_call(
         .get(callee)
         .cloned()
         .ok_or_else(|| TypeError {
-            message: format!("undefined function `{callee}`"),
+            message: checker.vocab.msg("type/undefined-function", &[callee]),
             line,
             column,
         })?;
     if args.len() != sig.param_types.len() {
+        let expected = sig.param_types.len().to_string();
+        let found = args.len().to_string();
         return Err(TypeError {
-            message: format!(
-                "function `{callee}` expects {} argument(s), found {}",
-                sig.param_types.len(),
-                args.len()
-            ),
+            message: checker
+                .vocab
+                .msg("type/function-arity-mismatch", &[callee, &expected, &found]),
             line,
             column,
         });
@@ -87,8 +87,13 @@ pub(super) fn check_call(
     for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
         let arg_ty = super::expressions::check_expr(checker, arg)?;
         if !super::assignable(expected, &arg_ty) {
+            let expected_name = checker.vocab.type_name(expected);
+            let found_name = checker.vocab.type_name(&arg_ty);
             return Err(TypeError {
-                message: format!("argument to `{callee}` expects `{expected}`, found `{arg_ty}`"),
+                message: checker.vocab.msg(
+                    "type/argument-type-mismatch",
+                    &[callee, &expected_name, &found_name],
+                ),
                 line: arg.line(),
                 column: arg.column(),
             });
@@ -114,12 +119,12 @@ pub(super) fn check_call_args(
     column: usize,
 ) -> Result<(), TypeError> {
     if args.len() != sig.param_types.len() {
+        let expected = sig.param_types.len().to_string();
+        let found = args.len().to_string();
         return Err(TypeError {
-            message: format!(
-                "`{what}` expects {} argument(s), found {}",
-                sig.param_types.len(),
-                args.len()
-            ),
+            message: checker
+                .vocab
+                .msg("type/call-arity-mismatch", &[what, &expected, &found]),
             line,
             column,
         });
@@ -127,8 +132,13 @@ pub(super) fn check_call_args(
     for (arg, expected) in args.iter().zip(sig.param_types.iter()) {
         let arg_ty = super::expressions::check_expr(checker, arg)?;
         if !super::assignable(expected, &arg_ty) {
+            let expected_name = checker.vocab.type_name(expected);
+            let found_name = checker.vocab.type_name(&arg_ty);
             return Err(TypeError {
-                message: format!("argument to `{what}` expects `{expected}`, found `{arg_ty}`"),
+                message: checker.vocab.msg(
+                    "type/argument-type-mismatch",
+                    &[what, &expected_name, &found_name],
+                ),
                 line: arg.line(),
                 column: arg.column(),
             });
@@ -145,11 +155,14 @@ pub(crate) fn check_len(
 ) -> Result<Type, TypeError> {
     match super::expressions::check_expr(checker, &args[0])? {
         Type::Array(_) => Ok(Type::Integer),
-        other => Err(TypeError {
-            message: format!("`len` expects an array, found `{other}`"),
-            line: args[0].line(),
-            column: args[0].column(),
-        }),
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/len-expects-array", &[&name]),
+                line: args[0].line(),
+                column: args[0].column(),
+            })
+        }
     }
 }
 
@@ -163,16 +176,25 @@ pub(crate) fn check_push(
     let value_ty = super::expressions::check_expr(checker, &args[1])?;
     match array_ty {
         Type::Array(elem) if *elem == value_ty => Ok(Type::Nil),
-        Type::Array(elem) => Err(TypeError {
-            message: format!("`push` onto `Array<{elem}>` expects `{elem}`, found `{value_ty}`"),
-            line,
-            column,
-        }),
-        other => Err(TypeError {
-            message: format!("`push` expects an array, found `{other}`"),
-            line,
-            column,
-        }),
+        Type::Array(elem) => {
+            let elem_name = checker.vocab.type_name(&elem);
+            let value_name = checker.vocab.type_name(&value_ty);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/push-onto-mismatch", &[&elem_name, &value_name]),
+                line,
+                column,
+            })
+        }
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/push-expects-array", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -185,19 +207,25 @@ pub(crate) fn check_get(
     let array_ty = super::expressions::check_expr(checker, &args[0])?;
     let index_ty = super::expressions::check_expr(checker, &args[1])?;
     if index_ty != Type::Integer {
+        let index_name = checker.vocab.type_name(&index_ty);
         return Err(TypeError {
-            message: format!("`get` index must be Integer, found `{index_ty}`"),
+            message: checker
+                .vocab
+                .msg("type/get-index-not-integer", &[&index_name]),
             line,
             column,
         });
     }
     match array_ty {
         Type::Array(elem) => Ok(*elem),
-        other => Err(TypeError {
-            message: format!("`get` expects an array, found `{other}`"),
-            line,
-            column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/get-expects-array", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -211,24 +239,36 @@ pub(crate) fn check_set(
     let index_ty = super::expressions::check_expr(checker, &args[1])?;
     let value_ty = super::expressions::check_expr(checker, &args[2])?;
     if index_ty != Type::Integer {
+        let index_name = checker.vocab.type_name(&index_ty);
         return Err(TypeError {
-            message: format!("`set` index must be Integer, found `{index_ty}`"),
+            message: checker
+                .vocab
+                .msg("type/set-index-not-integer", &[&index_name]),
             line,
             column,
         });
     }
     match array_ty {
         Type::Array(elem) if *elem == value_ty => Ok(Type::Nil),
-        Type::Array(elem) => Err(TypeError {
-            message: format!("`set` onto `Array<{elem}>` expects `{elem}`, found `{value_ty}`"),
-            line,
-            column,
-        }),
-        other => Err(TypeError {
-            message: format!("`set` expects an array, found `{other}`"),
-            line,
-            column,
-        }),
+        Type::Array(elem) => {
+            let elem_name = checker.vocab.type_name(&elem);
+            let value_name = checker.vocab.type_name(&value_ty);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/set-onto-mismatch", &[&elem_name, &value_name]),
+                line,
+                column,
+            })
+        }
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/set-expects-array", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -240,11 +280,14 @@ pub(crate) fn check_pop(
 ) -> Result<Type, TypeError> {
     match super::expressions::check_expr(checker, &args[0])? {
         Type::Array(elem) => Ok(*elem),
-        other => Err(TypeError {
-            message: format!("`pop` expects an array, found `{other}`"),
-            line: args[0].line(),
-            column: args[0].column(),
-        }),
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/pop-expects-array", &[&name]),
+                line: args[0].line(),
+                column: args[0].column(),
+            })
+        }
     }
 }
 
@@ -267,11 +310,14 @@ pub(crate) fn check_deref(
     let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
     match ptr_ty {
         Type::Pointer(elem) => Ok(*elem),
-        other => Err(TypeError {
-            message: format!("`deref` expects a pointer, found `{other}`"),
-            line,
-            column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/deref-expects-pointer", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -285,16 +331,27 @@ pub(crate) fn check_set_deref(
     let value_ty = super::expressions::check_expr(checker, &args[1])?;
     match ptr_ty {
         Type::Pointer(elem) if super::assignable(&elem, &value_ty) => Ok(Type::Nil),
-        Type::Pointer(elem) => Err(TypeError {
-            message: format!("`set_deref` into `Ptr<{elem}>` expects `{elem}`, found `{value_ty}`"),
-            line,
-            column,
-        }),
-        other => Err(TypeError {
-            message: format!("`set_deref` expects a pointer, found `{other}`"),
-            line,
-            column,
-        }),
+        Type::Pointer(elem) => {
+            let elem_name = checker.vocab.type_name(&elem);
+            let value_name = checker.vocab.type_name(&value_ty);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/set-deref-into-mismatch", &[&elem_name, &value_name]),
+                line,
+                column,
+            })
+        }
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/set-deref-expects-pointer", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -307,11 +364,14 @@ pub(crate) fn check_free(
     let ptr_ty = super::expressions::check_expr(checker, &args[0])?;
     match ptr_ty {
         Type::Pointer(_) => Ok(Type::Nil),
-        other => Err(TypeError {
-            message: format!("`free` expects a pointer, found `{other}`"),
-            line,
-            column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(&other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/free-expects-pointer", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -341,12 +401,12 @@ fn check_array_builtin(
     // Arity is checked once here from the registry; the function pointer
     // dispatch can then trust `args` has exactly `builtin.arity` elements.
     if args.len() != builtin.arity {
+        let expected = builtin.arity.to_string();
+        let found = args.len().to_string();
         return Err(TypeError {
-            message: format!(
-                "`{callee}` expects {} argument(s), found {}",
-                builtin.arity,
-                args.len()
-            ),
+            message: checker
+                .vocab
+                .msg("type/builtin-arity-mismatch", &[callee, &expected, &found]),
             line,
             column,
         });

@@ -62,7 +62,9 @@ pub(super) fn collect_classes(
             };
             let Some(ann) = type_ann else {
                 return Err(TypeError {
-                    message: "class constants require an explicit type annotation".to_string(),
+                    message: checker
+                        .vocab
+                        .msg("type/class-const-requires-annotation", &[]),
                     line: *line,
                     column: *column,
                 });
@@ -157,7 +159,9 @@ fn flatten_inheritance(checker: &mut TypeChecker, program: &[Stmt]) -> Result<()
         if !checker.classes.contains_key(parent) {
             let (line, column) = class_positions[child];
             return Err(TypeError {
-                message: format!("class `{child}` inherits from unknown class `{parent}`"),
+                message: checker
+                    .vocab
+                    .msg("type/unknown-parent-class", &[child, parent]),
                 line,
                 column,
             });
@@ -178,6 +182,7 @@ fn flatten_inheritance(checker: &mut TypeChecker, program: &[Stmt]) -> Result<()
                 &mut visited,
                 &mut rec_stack,
                 &mut order,
+                &checker.vocab,
             )?;
         }
     }
@@ -220,6 +225,7 @@ fn visit_class_for_cycle(
     visited: &mut std::collections::HashSet<String>,
     rec_stack: &mut std::collections::HashSet<String>,
     order: &mut Vec<String>,
+    vocab: &Vocabulary,
 ) -> Result<(), TypeError> {
     visited.insert(class_name.to_string());
     rec_stack.insert(class_name.to_string());
@@ -229,9 +235,7 @@ fn visit_class_for_cycle(
             // Cycle detected: report error at the child's position.
             let (line, column) = class_positions[class_name];
             return Err(TypeError {
-                message: format!(
-                    "inheritance cycle: class `{class_name}` has a circular parent chain"
-                ),
+                message: vocab.msg("type/inheritance-cycle", &[class_name]),
                 line,
                 column,
             });
@@ -245,6 +249,7 @@ fn visit_class_for_cycle(
                 visited,
                 rec_stack,
                 order,
+                vocab,
             )?;
         }
     }
@@ -297,10 +302,12 @@ pub(super) fn check_classes(checker: &mut TypeChecker, program: &[Stmt]) -> Resu
             if let (Some(declared), Some(actual)) = (&declared_return, &actual_return) {
                 if declared != actual {
                     checker.pop_scope();
+                    let declared_name = checker.vocab.type_name(declared);
+                    let actual_name = checker.vocab.type_name(actual);
                     return Err(TypeError {
-                        message: format!(
-                            "method `{name}#{}` declared to return `{declared}`, but returns `{actual}`",
-                            method_name(m)
+                        message: checker.vocab.msg(
+                            "type/method-return-type-mismatch",
+                            &[name, method_name(m), &declared_name, &actual_name],
                         ),
                         line: m.line(),
                         column: m.column(),
@@ -328,7 +335,7 @@ pub(super) fn check_classes(checker: &mut TypeChecker, program: &[Stmt]) -> Resu
 /// (implicit self), so collecting `VarDecl` names is what detects field
 /// assignment.
 fn check_fields_assigned_in_initializer(
-    _checker: &TypeChecker,
+    checker: &TypeChecker,
     program: &[Stmt],
     class_name: &str,
     parent: &Option<String>,
@@ -361,10 +368,9 @@ fn check_fields_assigned_in_initializer(
     for f in &all_fields_to_check {
         if !assigned.contains(f.name.as_str()) {
             return Err(TypeError {
-                message: format!(
-                    "field `{}` of class `{class_name}` is never assigned in `initializer` \
-                     (it would be `Nil` at runtime, not `{}`)",
-                    f.name, f.type_ann.name
+                message: checker.vocab.msg(
+                    "type/field-never-assigned",
+                    &[&f.name, class_name, &f.type_ann.name],
                 ),
                 line: f.line,
                 column: f.column,
@@ -414,8 +420,11 @@ pub(super) fn check_field_access(
 ) -> Result<Type, TypeError> {
     let object_ty = super::expressions::check_expr(checker, object)?;
     let Type::Instance(class_name) = &object_ty else {
+        let object_name = checker.vocab.type_name(&object_ty);
         return Err(TypeError {
-            message: format!("cannot access field `{field}` on `{object_ty}`"),
+            message: checker
+                .vocab
+                .msg("type/cannot-access-field", &[field, &object_name]),
             line,
             column,
         });
@@ -425,7 +434,9 @@ pub(super) fn check_field_access(
         .get(field)
         .cloned()
         .ok_or_else(|| TypeError {
-            message: format!("class `{class_name}` has no field `{field}`"),
+            message: checker
+                .vocab
+                .msg("type/class-has-no-field", &[class_name, field]),
             line,
             column,
         })
@@ -455,8 +466,11 @@ pub(super) fn check_method_call(
                 checker, kind, &object_ty, method, args, line, column,
             );
         }
+        let object_name = checker.vocab.type_name(&object_ty);
         return Err(TypeError {
-            message: format!("cannot call method `{method}` on `{object_ty}`"),
+            message: checker
+                .vocab
+                .msg("type/cannot-call-method", &[method, &object_name]),
             line,
             column,
         });
@@ -466,7 +480,9 @@ pub(super) fn check_method_call(
         .get(method)
         .cloned()
         .ok_or_else(|| TypeError {
-            message: format!("class `{class_name}` has no method `{method}`"),
+            message: checker
+                .vocab
+                .msg("type/class-has-no-method", &[class_name, method]),
             line,
             column,
         })?;
@@ -500,7 +516,9 @@ fn check_construction(
 ) -> Result<Type, TypeError> {
     if checker.vocab.canonical_method(method) != "new" {
         return Err(TypeError {
-            message: format!("class `{class_name}` has no static method `{method}`"),
+            message: checker
+                .vocab
+                .msg("type/class-has-no-static-method", &[class_name, method]),
             line,
             column,
         });
@@ -522,9 +540,9 @@ fn check_construction(
         }
         None if !args.is_empty() => {
             return Err(TypeError {
-                message: format!(
-                    "class `{class_name}` has no initializer, so `.new` takes no arguments"
-                ),
+                message: checker
+                    .vocab
+                    .msg("type/no-initializer-takes-no-args", &[class_name]),
                 line,
                 column,
             });

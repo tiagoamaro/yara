@@ -35,9 +35,12 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
                 // `assignable` covers the two sanctioned mismatches: the `[]`
                 // empty-array sentinel and `nil` into a pointer type.
                 if !super::assignable(&declared, &value_ty) {
+                    let declared_name = checker.vocab.type_name(&declared);
+                    let value_name = checker.vocab.type_name(&value_ty);
                     return Err(TypeError {
-                        message: format!(
-                            "type mismatch for `{name}`: declared `{declared}`, found `{value_ty}`"
+                        message: checker.vocab.msg(
+                            "type/var-decl-type-mismatch",
+                            &[name, &declared_name, &value_name],
                         ),
                         line: *line,
                         column: *column,
@@ -68,9 +71,12 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             if let (Some(declared), Some(actual)) = (&declared_return, &actual_return) {
                 if declared != actual {
                     checker.pop_scope();
+                    let declared_name = checker.vocab.type_name(declared);
+                    let actual_name = checker.vocab.type_name(actual);
                     return Err(TypeError {
-                        message: format!(
-                            "function `{name}` declared to return `{declared}`, but returns `{actual}`"
+                        message: checker.vocab.msg(
+                            "type/function-return-type-mismatch",
+                            &[name, &declared_name, &actual_name],
                         ),
                         line: stmt.line(),
                         column: stmt.column(),
@@ -96,8 +102,11 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
         } => {
             let cond_ty = super::expressions::check_expr(checker, condition)?;
             if cond_ty != Type::Boolean {
+                let cond_name = checker.vocab.type_name(&cond_ty);
                 return Err(TypeError {
-                    message: format!("`if` condition must be Boolean, found `{cond_ty}`"),
+                    message: checker
+                        .vocab
+                        .msg("type/if-condition-must-be-boolean", &[&cond_name]),
                     line: *line,
                     column: *column,
                 });
@@ -106,8 +115,11 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
             for (cond, body) in elsif_branches {
                 let ty = super::expressions::check_expr(checker, cond)?;
                 if ty != Type::Boolean {
+                    let ty_name = checker.vocab.type_name(&ty);
                     return Err(TypeError {
-                        message: format!("`elsif` condition must be Boolean, found `{ty}`"),
+                        message: checker
+                            .vocab
+                            .msg("type/elsif-condition-must-be-boolean", &[&ty_name]),
                         line: cond.line(),
                         column: cond.column(),
                     });
@@ -127,8 +139,11 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
         } => {
             let cond_ty = super::expressions::check_expr(checker, condition)?;
             if cond_ty != Type::Boolean {
+                let cond_name = checker.vocab.type_name(&cond_ty);
                 return Err(TypeError {
-                    message: format!("`while` condition must be Boolean, found `{cond_ty}`"),
+                    message: checker
+                        .vocab
+                        .msg("type/while-condition-must-be-boolean", &[&cond_name]),
                     line: *line,
                     column: *column,
                 });
@@ -178,9 +193,12 @@ pub(super) fn check_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<(), T
                 super::classes::check_field_access(checker, object, field, *line, *column)?;
             let value_ty = super::expressions::check_expr(checker, value)?;
             if !super::assignable(&field_ty, &value_ty) {
+                let value_name = checker.vocab.type_name(&value_ty);
+                let field_name = checker.vocab.type_name(&field_ty);
                 return Err(TypeError {
-                    message: format!(
-                        "cannot assign `{value_ty}` to field `{field}` of type `{field_ty}`"
+                    message: checker.vocab.msg(
+                        "type/cannot-assign-field",
+                        &[&value_name, field, &field_name],
                     ),
                     line: *line,
                     column: *column,
@@ -255,8 +273,11 @@ fn check_tail_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<Option<Type
         } => {
             let cond_ty = super::expressions::check_expr(checker, condition)?;
             if cond_ty != Type::Boolean {
+                let cond_name = checker.vocab.type_name(&cond_ty);
                 return Err(TypeError {
-                    message: format!("`if` condition must be Boolean, found `{cond_ty}`"),
+                    message: checker
+                        .vocab
+                        .msg("type/if-condition-must-be-boolean", &[&cond_name]),
                     line: *line,
                     column: *column,
                 });
@@ -265,19 +286,22 @@ fn check_tail_stmt(checker: &mut TypeChecker, stmt: &Stmt) -> Result<Option<Type
             for (cond, body) in elsif_branches {
                 let ty = super::expressions::check_expr(checker, cond)?;
                 if ty != Type::Boolean {
+                    let ty_name = checker.vocab.type_name(&ty);
                     return Err(TypeError {
-                        message: format!("`elsif` condition must be Boolean, found `{ty}`"),
+                        message: checker
+                            .vocab
+                            .msg("type/elsif-condition-must-be-boolean", &[&ty_name]),
                         line: cond.line(),
                         column: cond.column(),
                     });
                 }
                 let branch_ty = check_body_return_type(checker, body)?;
-                result = combine_tail_types(result, branch_ty, *line, *column)?;
+                result = combine_tail_types(result, branch_ty, *line, *column, &checker.vocab)?;
             }
             result = match else_body {
                 Some(body) => {
                     let branch_ty = check_body_return_type(checker, body)?;
-                    combine_tail_types(result, branch_ty, *line, *column)?
+                    combine_tail_types(result, branch_ty, *line, *column, &checker.vocab)?
                 }
                 // No `else`: not every path yields a value, so this `if` can't
                 // be relied on as a tail expression.
@@ -305,14 +329,19 @@ fn combine_tail_types(
     b: Option<Type>,
     line: usize,
     column: usize,
+    vocab: &Vocabulary,
 ) -> Result<Option<Type>, TypeError> {
     match (a, b) {
         (Some(x), Some(y)) if x == y => Ok(Some(x)),
-        (Some(x), Some(y)) => Err(TypeError {
-            message: format!("branches of `if` return different types: `{x}` vs `{y}`"),
-            line,
-            column,
-        }),
+        (Some(x), Some(y)) => {
+            let x_name = vocab.type_name(&x);
+            let y_name = vocab.type_name(&y);
+            Err(TypeError {
+                message: vocab.msg("type/branches-return-different-types", &[&x_name, &y_name]),
+                line,
+                column,
+            })
+        }
         _ => Ok(None),
     }
 }

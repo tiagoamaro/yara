@@ -15,10 +15,15 @@ pub(super) fn check_primitive_method(
 ) -> Result<Type, TypeError> {
     let canonical_method = checker.vocab.canonical_method(method);
     let Some(m) = crate::methods::lookup(kind, &canonical_method) else {
+        let object_name = checker.vocab.type_name(object_ty);
+        let available = checker
+            .vocab
+            .localized_method_names(&crate::methods::names_for(kind))
+            .join(", ");
         return Err(TypeError {
-            message: format!(
-                "`{object_ty}` has no method `{method}` (available: {})",
-                crate::methods::names_for(kind).join(", ")
+            message: checker.vocab.msg(
+                "type/no-method-available",
+                &[&object_name, method, &available],
             ),
             line,
             column,
@@ -26,11 +31,13 @@ pub(super) fn check_primitive_method(
     };
 
     if args.len() != m.arity {
+        let object_name = checker.vocab.type_name(object_ty);
+        let expected = m.arity.to_string();
+        let found = args.len().to_string();
         return Err(TypeError {
-            message: format!(
-                "`{object_ty}#{method}` expects {} argument(s), found {}",
-                m.arity,
-                args.len()
+            message: checker.vocab.msg(
+                "type/method-arity-mismatch",
+                &[&object_name, method, &expected, &found],
             ),
             line,
             column,
@@ -43,7 +50,7 @@ pub(super) fn check_primitive_method(
 // Array methods
 
 pub(crate) fn check_array_size(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     array_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -51,11 +58,14 @@ pub(crate) fn check_array_size(
 ) -> Result<Type, TypeError> {
     match array_ty {
         Type::Array(_) => Ok(Type::Integer),
-        other => Err(TypeError {
-            message: format!("`Array#size` expects an array, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/array-size-expects-array", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
@@ -69,16 +79,25 @@ pub(crate) fn check_array_push(
     let value_ty = super::expressions::check_expr(checker, &args[0])?;
     match array_ty {
         Type::Array(elem) if super::assignable(elem, &value_ty) => Ok(Type::Nil),
-        Type::Array(elem) => Err(TypeError {
-            message: format!("`Array<{elem}>#push` expects `{elem}`, found `{value_ty}`"),
-            line,
-            column,
-        }),
-        other => Err(TypeError {
-            message: format!("`Array#push` expects an array, found `{other}`"),
-            line,
-            column,
-        }),
+        Type::Array(elem) => {
+            let elem_name = checker.vocab.type_name(elem);
+            let value_name = checker.vocab.type_name(&value_ty);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/array-push-mismatch", &[&elem_name, &value_name]),
+                line,
+                column,
+            })
+        }
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/array-push-expects-array", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -91,19 +110,25 @@ pub(crate) fn check_array_get(
 ) -> Result<Type, TypeError> {
     let index_ty = super::expressions::check_expr(checker, &args[0])?;
     if index_ty != Type::Integer {
+        let index_name = checker.vocab.type_name(&index_ty);
         return Err(TypeError {
-            message: format!("`Array#get` index must be `Integer`, found `{index_ty}`"),
+            message: checker
+                .vocab
+                .msg("type/array-get-index-not-integer", &[&index_name]),
             line,
             column,
         });
     }
     match array_ty {
         Type::Array(elem) => Ok(*elem.clone()),
-        other => Err(TypeError {
-            message: format!("`Array#get` expects an array, found `{other}`"),
-            line,
-            column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/array-get-expects-array", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
@@ -117,29 +142,41 @@ pub(crate) fn check_array_set(
     let index_ty = super::expressions::check_expr(checker, &args[0])?;
     let value_ty = super::expressions::check_expr(checker, &args[1])?;
     if index_ty != Type::Integer {
+        let index_name = checker.vocab.type_name(&index_ty);
         return Err(TypeError {
-            message: format!("`Array#set` index must be `Integer`, found `{index_ty}`"),
+            message: checker
+                .vocab
+                .msg("type/array-set-index-not-integer", &[&index_name]),
             line,
             column,
         });
     }
     match array_ty {
         Type::Array(elem) if super::assignable(elem, &value_ty) => Ok(Type::Nil),
-        Type::Array(elem) => Err(TypeError {
-            message: format!("`Array<{elem}>#set` expects `{elem}`, found `{value_ty}`"),
-            line,
-            column,
-        }),
-        other => Err(TypeError {
-            message: format!("`Array#set` expects an array, found `{other}`"),
-            line,
-            column,
-        }),
+        Type::Array(elem) => {
+            let elem_name = checker.vocab.type_name(elem);
+            let value_name = checker.vocab.type_name(&value_ty);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/array-set-mismatch", &[&elem_name, &value_name]),
+                line,
+                column,
+            })
+        }
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/array-set-expects-array", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_array_pop(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     array_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -147,16 +184,19 @@ pub(crate) fn check_array_pop(
 ) -> Result<Type, TypeError> {
     match array_ty {
         Type::Array(elem) => Ok(*elem.clone()),
-        other => Err(TypeError {
-            message: format!("`Array#pop` expects an array, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/array-pop-expects-array", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_array_is_empty(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     array_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -164,18 +204,23 @@ pub(crate) fn check_array_is_empty(
 ) -> Result<Type, TypeError> {
     match array_ty {
         Type::Array(_) => Ok(Type::Boolean),
-        other => Err(TypeError {
-            message: format!("`Array#is_empty` expects an array, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/array-is-empty-expects-array", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 // String methods
 
 pub(crate) fn check_string_size(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -183,16 +228,21 @@ pub(crate) fn check_string_size(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::Integer),
-        other => Err(TypeError {
-            message: format!("`String#size` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-size-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_string_upper(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -200,16 +250,21 @@ pub(crate) fn check_string_upper(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::String),
-        other => Err(TypeError {
-            message: format!("`String#upper` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-upper-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_string_lower(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -217,16 +272,21 @@ pub(crate) fn check_string_lower(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::String),
-        other => Err(TypeError {
-            message: format!("`String#lower` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-lower-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_string_trim(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -234,16 +294,21 @@ pub(crate) fn check_string_trim(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::String),
-        other => Err(TypeError {
-            message: format!("`String#trim` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-trim-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_string_is_empty(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -251,16 +316,21 @@ pub(crate) fn check_string_is_empty(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::Boolean),
-        other => Err(TypeError {
-            message: format!("`String#is_empty` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-is-empty-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_string_to_i(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -268,16 +338,21 @@ pub(crate) fn check_string_to_i(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::Integer),
-        other => Err(TypeError {
-            message: format!("`String#to_i` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-to-i-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_string_to_f(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -285,16 +360,21 @@ pub(crate) fn check_string_to_f(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::Float),
-        other => Err(TypeError {
-            message: format!("`String#to_f` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-to-f-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_string_to_s(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     string_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -302,18 +382,23 @@ pub(crate) fn check_string_to_s(
 ) -> Result<Type, TypeError> {
     match string_ty {
         Type::String => Ok(Type::String),
-        other => Err(TypeError {
-            message: format!("`String#to_s` expects a string, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/string-to-s-expects-string", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 // Integer methods
 
 pub(crate) fn check_int_to_s(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     int_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -321,16 +406,19 @@ pub(crate) fn check_int_to_s(
 ) -> Result<Type, TypeError> {
     match int_ty {
         Type::Integer => Ok(Type::String),
-        other => Err(TypeError {
-            message: format!("`Integer#to_s` expects an integer, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/int-to-s-expects-int", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_int_to_f(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     int_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -338,16 +426,19 @@ pub(crate) fn check_int_to_f(
 ) -> Result<Type, TypeError> {
     match int_ty {
         Type::Integer => Ok(Type::Float),
-        other => Err(TypeError {
-            message: format!("`Integer#to_f` expects an integer, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/int-to-f-expects-int", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_int_abs(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     int_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -355,18 +446,21 @@ pub(crate) fn check_int_abs(
 ) -> Result<Type, TypeError> {
     match int_ty {
         Type::Integer => Ok(Type::Integer),
-        other => Err(TypeError {
-            message: format!("`Integer#abs` expects an integer, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/int-abs-expects-int", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 // Float methods
 
 pub(crate) fn check_float_to_s(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     float_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -374,16 +468,19 @@ pub(crate) fn check_float_to_s(
 ) -> Result<Type, TypeError> {
     match float_ty {
         Type::Float => Ok(Type::String),
-        other => Err(TypeError {
-            message: format!("`Float#to_s` expects a float, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/float-to-s-expects-float", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_float_to_i(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     float_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -391,16 +488,19 @@ pub(crate) fn check_float_to_i(
 ) -> Result<Type, TypeError> {
     match float_ty {
         Type::Float => Ok(Type::Integer),
-        other => Err(TypeError {
-            message: format!("`Float#to_i` expects a float, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/float-to-i-expects-float", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_float_abs(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     float_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -408,18 +508,21 @@ pub(crate) fn check_float_abs(
 ) -> Result<Type, TypeError> {
     match float_ty {
         Type::Float => Ok(Type::Float),
-        other => Err(TypeError {
-            message: format!("`Float#abs` expects a float, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/float-abs-expects-float", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 // Boolean methods
 
 pub(crate) fn check_bool_to_s(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     bool_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -427,18 +530,21 @@ pub(crate) fn check_bool_to_s(
 ) -> Result<Type, TypeError> {
     match bool_ty {
         Type::Boolean => Ok(Type::String),
-        other => Err(TypeError {
-            message: format!("`Boolean#to_s` expects a boolean, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/bool-to-s-expects-bool", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
 // Pointer methods
 
 pub(crate) fn check_ptr_deref(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     ptr_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -446,11 +552,14 @@ pub(crate) fn check_ptr_deref(
 ) -> Result<Type, TypeError> {
     match ptr_ty {
         Type::Pointer(elem) => Ok(*elem.clone()),
-        other => Err(TypeError {
-            message: format!("`Ptr#deref` expects a pointer, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/ptr-deref-expects-ptr", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 
@@ -464,21 +573,32 @@ pub(crate) fn check_ptr_set_deref(
     let value_ty = super::expressions::check_expr(checker, &args[0])?;
     match ptr_ty {
         Type::Pointer(elem) if super::assignable(elem, &value_ty) => Ok(Type::Nil),
-        Type::Pointer(elem) => Err(TypeError {
-            message: format!("`Ptr<{elem}>#set_deref` expects `{elem}`, found `{value_ty}`"),
-            line,
-            column,
-        }),
-        other => Err(TypeError {
-            message: format!("`Ptr#set_deref` expects a pointer, found `{other}`"),
-            line,
-            column,
-        }),
+        Type::Pointer(elem) => {
+            let elem_name = checker.vocab.type_name(elem);
+            let value_name = checker.vocab.type_name(&value_ty);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/ptr-set-deref-mismatch", &[&elem_name, &value_name]),
+                line,
+                column,
+            })
+        }
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker
+                    .vocab
+                    .msg("type/ptr-set-deref-expects-ptr", &[&name]),
+                line,
+                column,
+            })
+        }
     }
 }
 
 pub(crate) fn check_ptr_free(
-    _checker: &mut TypeChecker,
+    checker: &mut TypeChecker,
     ptr_ty: &Type,
     _args: &[Expr],
     _line: usize,
@@ -486,11 +606,14 @@ pub(crate) fn check_ptr_free(
 ) -> Result<Type, TypeError> {
     match ptr_ty {
         Type::Pointer(_) => Ok(Type::Nil),
-        other => Err(TypeError {
-            message: format!("`Ptr#free` expects a pointer, found `{other}`"),
-            line: _line,
-            column: _column,
-        }),
+        other => {
+            let name = checker.vocab.type_name(other);
+            Err(TypeError {
+                message: checker.vocab.msg("type/ptr-free-expects-ptr", &[&name]),
+                line: _line,
+                column: _column,
+            })
+        }
     }
 }
 

@@ -21,7 +21,7 @@ pub(super) fn check_expr(checker: &mut TypeChecker, expr: &Expr) -> Result<Type,
         Expr::NilLit { .. } => Ok(Type::Nil),
         Expr::Ident { name, line, column } => {
             checker.lookup_var(name).cloned().ok_or_else(|| TypeError {
-                message: format!("undefined variable `{name}`"),
+                message: checker.vocab.msg("type/undefined-variable", &[name]),
                 line: *line,
                 column: *column,
             })
@@ -35,7 +35,7 @@ pub(super) fn check_expr(checker: &mut TypeChecker, expr: &Expr) -> Result<Type,
         } => {
             let left_ty = check_expr(checker, left)?;
             let right_ty = check_expr(checker, right)?;
-            check_binary_op(*op, &left_ty, &right_ty, *line, *column)
+            check_binary_op(*op, &left_ty, &right_ty, *line, *column, &checker.vocab)
         }
         Expr::Unary {
             op: UnOp::Neg,
@@ -46,11 +46,14 @@ pub(super) fn check_expr(checker: &mut TypeChecker, expr: &Expr) -> Result<Type,
             let ty = check_expr(checker, expr)?;
             match ty {
                 Type::Integer | Type::Float => Ok(ty),
-                other => Err(TypeError {
-                    message: format!("cannot negate `{other}`"),
-                    line: *line,
-                    column: *column,
-                }),
+                other => {
+                    let name = checker.vocab.type_name(&other);
+                    Err(TypeError {
+                        message: checker.vocab.msg("type/cannot-negate", &[&name]),
+                        line: *line,
+                        column: *column,
+                    })
+                }
             }
         }
         Expr::Call {
@@ -73,9 +76,12 @@ pub(super) fn check_expr(checker: &mut TypeChecker, expr: &Expr) -> Result<Type,
             for elem in &elements[1..] {
                 let ty = check_expr(checker, elem)?;
                 if ty != first_ty {
+                    let first_name = checker.vocab.type_name(&first_ty);
+                    let ty_name = checker.vocab.type_name(&ty);
                     return Err(TypeError {
-                        message: format!(
-                            "array elements must share one type: found `{first_ty}` and `{ty}`"
+                        message: checker.vocab.msg(
+                            "type/array-elements-must-share-type",
+                            &[&first_name, &ty_name],
                         ),
                         line: *line,
                         column: *column,
@@ -93,19 +99,25 @@ pub(super) fn check_expr(checker: &mut TypeChecker, expr: &Expr) -> Result<Type,
             let array_ty = check_expr(checker, array)?;
             let index_ty = check_expr(checker, index)?;
             if index_ty != Type::Integer {
+                let index_name = checker.vocab.type_name(&index_ty);
                 return Err(TypeError {
-                    message: format!("array index must be Integer, found `{index_ty}`"),
+                    message: checker
+                        .vocab
+                        .msg("type/array-index-must-be-integer", &[&index_name]),
                     line: *line,
                     column: *column,
                 });
             }
             match array_ty {
                 Type::Array(elem) => Ok(*elem),
-                other => Err(TypeError {
-                    message: format!("cannot index into `{other}`"),
-                    line: *line,
-                    column: *column,
-                }),
+                other => {
+                    let name = checker.vocab.type_name(&other);
+                    Err(TypeError {
+                        message: checker.vocab.msg("type/cannot-index-into", &[&name]),
+                        line: *line,
+                        column: *column,
+                    })
+                }
             }
         }
         Expr::FieldAccess {
@@ -140,11 +152,16 @@ fn check_binary_op(
     right: &Type,
     line: usize,
     column: usize,
+    vocab: &Vocabulary,
 ) -> Result<Type, TypeError> {
     let mismatch = || TypeError {
-        message: format!(
-            "cannot apply `{}` to `{left}` and `{right}`",
-            binop_symbol(op)
+        message: vocab.msg(
+            "type/cannot-apply-binop",
+            &[
+                binop_symbol(op),
+                &vocab.type_name(left),
+                &vocab.type_name(right),
+            ],
         ),
         line,
         column,
