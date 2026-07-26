@@ -2,8 +2,10 @@
 
 use crate::ast::{BinOp, Expr, FieldDecl, Param, Stmt, TypeAnnotation, UnOp};
 use crate::lexer::{Token, TokenKind};
+use crate::translations::Vocabulary;
 use crate::types::normalize_type_alias;
 use std::fmt;
+use std::rc::Rc;
 
 /// A parse-time failure. Mirrors `lexer::LexError`'s shape (a `message` plus
 /// `line`/`column` of the offending token) so both stages of the pipeline
@@ -41,11 +43,30 @@ impl crate::diagnostics::Diagnostic for ParseError {
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    vocab: Rc<Vocabulary>,
 }
 
 impl Parser {
+    /// A parser using the default English vocabulary — every type/builtin/
+    /// method name is expected exactly as the registries spell it.
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser {
+            tokens,
+            pos: 0,
+            vocab: Rc::new(Vocabulary::english()),
+        }
+    }
+
+    /// A parser that additionally accepts localized type-annotation spellings
+    /// from `vocab` (normalized to canonical English in
+    /// [`Parser::parse_type_annotation`] before the rest of the pipeline ever
+    /// sees them).
+    pub fn with_vocabulary(tokens: Vec<Token>, vocab: Rc<Vocabulary>) -> Self {
+        Parser {
+            tokens,
+            pos: 0,
+            vocab,
+        }
     }
 
     /// Entry point: repeatedly parses top-level statements via `parse_stmt`
@@ -142,6 +163,7 @@ impl Parser {
     /// both work.
     pub(super) fn parse_type_annotation(&mut self) -> Result<TypeAnnotation, ParseError> {
         let (name, line, column) = self.expect_ident()?;
+        let name = self.vocab.canonical_type(&name);
 
         if name == "Ptr" {
             self.expect(&TokenKind::Lt, "`<`")?;

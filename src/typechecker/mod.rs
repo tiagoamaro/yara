@@ -2,8 +2,10 @@
 
 use crate::ast::{BinOp, Expr, Stmt, UnOp};
 use crate::env::Environment;
+use crate::translations::Vocabulary;
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 
 mod calls;
 mod classes;
@@ -50,6 +52,14 @@ const PRIMITIVE_TYPES: &[(&str, Type)] = &[
     ("String", Type::String),
     ("Nil", Type::Nil),
 ];
+
+/// The canonical annotation names for every primitive type (`Integer`,
+/// `Float`, `Boolean`, `String`, `Nil`), derived from [`PRIMITIVE_TYPES`] so
+/// `translations::Vocabulary::english()` never has to restate this list --
+/// see `src/translations/CLAUDE.md`.
+pub fn primitive_type_names() -> Vec<&'static str> {
+    PRIMITIVE_TYPES.iter().map(|(name, _)| *name).collect()
+}
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -155,6 +165,7 @@ pub struct TypeChecker {
     env: Environment<Type>,
     functions: HashMap<String, FunctionSig>,
     classes: HashMap<String, ClassInfo>,
+    pub(crate) vocab: Rc<Vocabulary>,
 }
 
 impl Default for TypeChecker {
@@ -165,10 +176,20 @@ impl Default for TypeChecker {
 
 impl TypeChecker {
     pub fn new() -> Self {
+        Self::with_vocabulary(Rc::new(Vocabulary::english()))
+    }
+
+    /// A type checker that recognizes `vocab`'s localized type/builtin/method
+    /// names in addition to accepting whatever it normalizes them to (see
+    /// `translations::Vocabulary` hook points in `calls.rs`/`methods.rs`/
+    /// `classes.rs`), and renders any localized-message overrides `vocab`
+    /// carries in its diagnostics.
+    pub fn with_vocabulary(vocab: Rc<Vocabulary>) -> Self {
         TypeChecker {
             env: Environment::new(),
             functions: HashMap::new(),
             classes: HashMap::new(),
+            vocab,
         }
     }
 
