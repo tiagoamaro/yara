@@ -11,11 +11,19 @@ use std::rc::Rc;
 mod calls;
 mod classes;
 mod expressions;
+mod methods;
 mod statements;
 
 pub(crate) use calls::{
     eval_alloc, eval_collect, eval_deref, eval_free, eval_get, eval_len, eval_pop, eval_push,
     eval_set, eval_set_deref,
+};
+pub(crate) use methods::{
+    eval_array_get, eval_array_is_empty, eval_array_pop, eval_array_push, eval_array_set,
+    eval_array_size, eval_bool_to_s, eval_float_abs, eval_float_to_i, eval_float_to_s,
+    eval_int_abs, eval_int_to_f, eval_int_to_s, eval_ptr_deref, eval_ptr_free, eval_ptr_set_deref,
+    eval_string_is_empty, eval_string_lower, eval_string_size, eval_string_to_f, eval_string_to_i,
+    eval_string_to_s, eval_string_trim, eval_string_upper,
 };
 
 #[derive(Debug, Clone, PartialEq)]
