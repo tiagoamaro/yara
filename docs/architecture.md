@@ -38,7 +38,7 @@ Beyond the five pipeline stages, a few small modules are shared across them, eac
 ```mermaid
 flowchart TD
     Start(["next char?"]) -->|digit| Num["read_number\n(int or float)"]
-    Start -->|'\"'| Str["read_string\n(escapes: \\n \\t \\\" \\\\)"]
+    Start -->|quote char| Str["read_string\n(escapes: newline, tab, quote, backslash)"]
     Start -->|letter or '_'| Ident["read_ident_or_keyword\n(keyword table or Ident)"]
     Start -->|anything else| Op["read_operator\n(1 or 2 char, maximal munch)"]
     Start -->|none left| Eof["emit TokenKind::Eof"]
