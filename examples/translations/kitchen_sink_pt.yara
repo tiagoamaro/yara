@@ -168,7 +168,7 @@ classe Animal
     "..."
   fim
 fim
-classe Cae < Animal
+classe Cao < Animal
   raca: Texto
   funcao initializer(an: Texto, rr: Texto)
     nome = an
@@ -178,7 +178,7 @@ classe Cae < Animal
     "Au!"
   fim
 fim
-cao: Cae = Cae.novo("Rex", "Labrador")
+cao: Cao = Cao.novo("Rex", "Labrador")
 escreva(cao.nome)
 escreva(cao.raca)
 escreva(cao.falar())
