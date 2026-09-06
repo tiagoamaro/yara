@@ -19,7 +19,7 @@ All examples run end-to-end via `cargo run -- run examples/<file>.yara` (verifie
 - `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace; see its own `CLAUDE.md`.
 - `objects/` — `class` declarations: const/instance-var/initializer/method, `.new` construction, field read/write, single-parent inheritance (`class Child < Parent`); see its own `CLAUDE.md`.
 - `pointers/` — manual memory management and garbage collection demo (`alloc`/`deref`/`set_deref`/`free`/`collect()` builtins), plus pointer-based linked and circular list examples. `basic.yara` exercises allocation, dereferencing, and explicit freeing. `leak.yara` demonstrates allocations never freed (allowed in manual mode). `gc.yara` shows a manual-vs-GC comparison, leaking allocations reclaimed by `collect()`. `free_then_collect.yara` shows the two styles mixed: hand-freed slots aren't double-counted by a later sweep. `linked_list.yara` and `circular_list.yara` demonstrate pointer-based data structures; see its own `CLAUDE.md`.
-- `translations/` — keyword-translation demo (`--keywords <path>`, Portuguese); see its own `CLAUDE.md`.
+- `translations/` — full-vocabulary translation demo (`--vocabulary <path>`, `--keywords <path>` alias; Portuguese): `hello_pt.yara`, `fatorial_pt.yara`, and `kitchen_sink_pt.yara` (PT mirror of `kitchen_sink.yara`); see its own `CLAUDE.md`.
 
 ## Gotchas
 - `import` paths are relative to the importing file's own directory and resolved at `yara run` time (not a build step) — running `kitchen_sink.yara` from a different working directory still works because resolution is relative to the file, not cwd.
