@@ -25,6 +25,7 @@ Done and committed, suite green (133 unit + 4 integration, fmt clean):
 1. Structure item 5 (uniform `Span` in error types) — opportunistic.
 2. Finish sweeping `typechecker/`/`diagnostics/` messages into the `[messages]` catalog (full-vocabulary translation follow-up).
 3. ~~Promote `kitchen_sink.yara` to also import the pointer examples, plus a `free`-then-`collect` interaction example.~~ **Done** (2026-07-24): `examples/pointers/free_then_collect.yara` added (hand-freed slot not double-counted by a later sweep; second sweep reclaims 0); `kitchen_sink.yara` now imports `pointers/basic`, `pointers/leak`, `pointers/linked_list`. The `collect()` examples stay out of the kitchen sink on purpose — imports splice into one program over one shared heap, so `gc`/`free_then_collect` would reclaim each other's garbage and print counts different from their documented standalone output; and `linked_list`/`circular_list` both declare `class Node`, so only one can be imported.
+4. Phase 6: replace the Rust implementation with Ruby and ship it as a standalone mruby-based executable.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
 Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.
@@ -93,6 +94,30 @@ Gate after each sub-phase: `cargo test`, fmt, integration runs of new examples.
 Single-parent, methods + fields inherit, no override keyword first cut; `super` deferred. Only start when 1–3 done; re-scope then.
 
 ## Phase 5 — Native codegen — explicitly parked. Not in this plan's scope.
+
+## Phase 6 — Rewrite Yara in Ruby and distribute it with mruby
+
+**Goal:** make Ruby the sole implementation language for Yara while preserving the language's observable behavior. The lexer, parser, resolver, typechecker, interpreter, diagnostics, vocabulary support, and command-line interface will all be rewritten in Ruby. mruby is the deployment runtime, not a second implementation: the Ruby sources will be compiled to mruby bytecode and packaged with a small native launcher as one `yara` executable that does not require CRuby, Cargo, or a system Ruby installation.
+
+The current Rust implementation remains the executable specification during the migration. Replace stages incrementally, comparing each Ruby stage against the Rust implementation and the existing examples, unit tests, integration tests, and golden diagnostics. Remove the Rust implementation only after the Ruby version reaches parity; do not maintain two permanent implementations.
+
+Deliverables:
+1. A Ruby implementation of every current pipeline stage and runtime subsystem, including source positions, import source maps, type checking, classes and inheritance, pointers and teaching GC, translated vocabulary, and rustc-style diagnostics.
+2. A Ruby CLI compatible with the current supported command line, including `yara run <file>` and vocabulary loading.
+3. A reproducible mruby build that compiles the Ruby implementation to bytecode and embeds it in a native `yara` executable for each supported platform.
+4. A migration/parity harness that runs the same success examples and failure goldens through both implementations until the Rust version is retired.
+5. Release documentation covering how to build the executable, run the test suite, add an mruby-supported Ruby dependency, and produce platform artifacts.
+
+Acceptance criteria:
+- Every bundled non-error example produces the same output as the Rust implementation.
+- Every bundled error example fails at the same stage with the same file, line, column, source excerpt, and message, except for deliberately approved wording changes.
+- The executable runs on a clean machine without Rust, Cargo, CRuby, or dynamically loaded Yara source files.
+- The packaged implementation contains no Rust language/runtime logic; native code is limited to mruby and the minimal launcher/build glue required to start the embedded Ruby program.
+- CI builds the standalone executable and exercises the full example and diagnostic suite through it.
+
+Migration order: establish the Ruby test/parity harness; port shared AST/types and diagnostics; port lexer, parser, resolver, and typechecker in pipeline order; port interpreter/runtime features; port the CLI and vocabulary loader; add mruby bytecode embedding and release builds; then delete the Rust implementation after the standalone executable passes the parity gate.
+
+Non-goals for this phase: changing Yara syntax or semantics, adding native code generation for Yara programs, supporting both Rust and Ruby implementations indefinitely, or requiring users to install Ruby. Any language changes discovered during the rewrite should be specified and tested separately before both implementations adopt them.
 
 ---
 
