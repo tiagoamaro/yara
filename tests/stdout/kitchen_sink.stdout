@@ -1,0 +1,66 @@
+Hello, Yara!
+10
+3.14
+true
+Yara
+5
+Hello, Yara
+positive
+negative
+zero
+45
+5
+4
+3
+2
+1
+120
+3628800
+3.14159
+hello
+12.56636
+3
+10
+25
+40
+false
+true
+5
+HELLO
+hello
+world
+false
+true
+42
+3.14
+hello
+5
+5
+7
+2.5
+2
+1.5
+true
+false
+99
+111
+After alloc(5):
+5
+After set_deref(p, 10):
+10
+After set_deref(p, 42):
+42
+Memory freed
+Leaked allocation:
+0
+Leaked allocation:
+1
+Leaked allocation:
+2
+Loop complete; memory leaked in manual mode
+List contents:
+10
+20
+30
+Sum:
+60

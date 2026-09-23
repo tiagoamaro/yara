@@ -1,0 +1,7 @@
+Freed one slot by hand
+collect() reclaimed (expect 2):
+2
+Reachable allocation survived:
+7
+collect() after freeing everything (expect 0):
+0

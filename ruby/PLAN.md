@@ -64,9 +64,9 @@ File names use full words, matching the Rust side. Every method gets a YARD comm
 **Gate:** `rake test` green; the spike results are written down.
 
 ### 1. Stdout goldens and the parity harness
-- Run the Rust binary over every non-error example and save its stdout as `tests/golden/<path under examples>.stdout` (e.g. `tests/golden/data_structures/list.stdout`). A small Ruby script under `ruby/` does the capture, so regenerating never needs a Rust change.
-- Write `ruby/test/parity_test.rb`. It runs `bin/yara run <example>` as a subprocess from the repo root, passes `--vocabulary translations/pt.vocab` under the same rule the Rust tests use, and compares stdout, stderr, and exit status with the goldens.
-- An example whose golden fails at a stage Ruby hasn't ported yet is skipped, not failed. That lets the harness go green stage by stage.
+- Run the Rust binary over every example and save its stdout as `tests/stdout/<path under examples>.stdout` (e.g. `tests/stdout/data_structures/list.stdout`), with `ruby/script/capture_rust_stdout.rb`. The files can't live in `tests/golden/`, because Rust's golden test rejects any file there that isn't an error example's `.stderr`. The script also aborts if Rust's stderr no longer matches a golden.
+- Write `ruby/test/parity_test.rb`, one test per example. It runs `bin/yara run <example>` as a subprocess from the repo root, passes `--vocabulary translations/pt.vocab` under the same rule the Rust tests use (`test/support/examples.rb`), and compares stdout, stderr, and exit status (1 for error examples, 0 otherwise).
+- An example that reaches a stage Ruby hasn't ported yet is skipped, not failed. `PORTED_STAGES` in the test lists the ported stages; each later step appends to it.
 **Gate:** the stdout goldens are committed; the Ruby harness runs, with everything skipped.
 
 ### 2. AST, diagnostics, source map
@@ -103,7 +103,7 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 ## Progress
 
 - [x] 0. Toolchain and mruby spike (2026-09-22)
-- [ ] 1. Stdout goldens and harness
+- [x] 1. Stdout goldens and harness (2026-09-22)
 - [ ] 2. AST, diagnostics
 - [ ] 3. Lexer, parser
 - [ ] 4. Resolver

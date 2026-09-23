@@ -8,7 +8,7 @@ Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid sy
 
 - `rust/`: the Rust crate (`Cargo.toml`, `src/`, `tests/`). Run `cargo` commands from here. Paths in docs under `rust/` are relative to `rust/`, except `examples/`, `translations/`, `tests/golden/` and `docs/`, which always mean the shared fixtures at the repo root.
 - `ruby/`: the Ruby implementation (see `ruby/CLAUDE.md`).
-- Shared by both implementations, at the repo root: `examples/`, `translations/`, `tests/golden/` (expected stderr per error example, with root-relative paths), `docs/`, `editors/`.
+- Shared by both implementations, at the repo root: `examples/`, `translations/`, `tests/golden/` (expected stderr per error example, with root-relative paths; Rust's golden test rejects any other file there), `tests/stdout/` (expected stdout per example, captured from the Rust binary by `ruby/script/capture_rust_stdout.rb`), `docs/`, `editors/`.
 
 Pipeline order: `lexer` → `parser` → `resolver` → `typechecker` → `interpreter`.
 Each has its own `CLAUDE.md`; so do `rust/src/ast/`, `rust/src/diagnostics/`, `rust/src/translations/`,

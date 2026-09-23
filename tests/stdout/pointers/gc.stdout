@@ -1,0 +1,5 @@
+Manual: allocated one slot, freed it ourselves
+GC: slots reclaimed by collect():
+3
+Still-reachable allocation survives the sweep:
+99

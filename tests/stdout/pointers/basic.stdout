@@ -1,0 +1,7 @@
+After alloc(5):
+5
+After set_deref(p, 10):
+10
+After set_deref(p, 42):
+42
+Memory freed
