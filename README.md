@@ -58,7 +58,7 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 
 ## Architecture
 
-`docs/architecture.md` walks through the real pipeline (`Lexer` -> `Parser` -> `resolver` -> `TypeChecker` -> `Interpreter`) with Mermaid diagrams and the actual function names involved — written for anyone studying how a small compiler/interpreter is put together. Every function in `src/` also has a `///` doc comment explaining its mechanics, not just its name.
+`docs/architecture.md` walks through the real pipeline (`Lexer` -> `Parser` -> `resolver` -> `TypeChecker` -> `Interpreter`) with Mermaid diagrams and the actual function names involved — written for anyone studying how a small compiler/interpreter is put together. Every function in `rust/src/` also has a `///` doc comment explaining its mechanics, not just its name.
 
 ## Examples
 
@@ -79,8 +79,10 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 
 ## Running
 
+The Rust implementation lives in `rust/`; a Ruby rewrite is starting in `ruby/` (see `docs/plan-next-milestones.md`, Phase 6). From the repo root:
+
 ```
-cargo run -- run examples/hello.yara
+cargo run --manifest-path rust/Cargo.toml -- run examples/hello.yara
 ```
 
 ## Running from a release build
@@ -88,10 +90,10 @@ cargo run -- run examples/hello.yara
 `cargo run` rebuilds in debug mode each time. For a standalone binary:
 
 ```
-cargo build --release
-./target/release/yara run examples/hello.yara
+cargo build --release --manifest-path rust/Cargo.toml
+./rust/target/release/yara run examples/hello.yara
 ```
 
-The binary at `target/release/yara` takes the same arguments as `cargo run --`
+The binary at `rust/target/release/yara` takes the same arguments as `cargo run --`
 (e.g. `yara run <file> --keywords <path>`) and has no runtime dependency on
 Cargo — copy it anywhere and run it directly.

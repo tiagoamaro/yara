@@ -2,7 +2,7 @@
 # single program, all spelled with the bundled `translations/pt.vocab`.
 #
 # Run with:
-#   cargo run -- run examples/translations/kitchen_sink_pt.yara \
+#   cargo run --manifest-path rust/Cargo.toml -- run examples/translations/kitchen_sink_pt.yara \
 #     --vocabulary translations/pt.vocab
 # ...or just `cargo test` — every example under examples/translations/ is
 # collected and run with the pt Vocabulary automatically.

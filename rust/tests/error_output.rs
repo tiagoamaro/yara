@@ -9,7 +9,8 @@
 //! hand; this automates it.
 //!
 //! To regenerate a golden after an *intentional* format change:
-//! `cargo run -- run examples/errors/<name>.yara 2> tests/golden/<name>.stderr`
+//! from the repo root,
+//! `cargo run --manifest-path rust/Cargo.toml -- run examples/errors/<name>.yara 2> tests/golden/<name>.stderr`
 
 use std::path::Path;
 
@@ -69,11 +70,19 @@ fn rendered_error(path: &Path) -> Option<String> {
     None
 }
 
+/// Moves into the repo root, where the shared `examples/`, `translations/` and
+/// `tests/golden/` fixtures live; goldens embed root-relative paths, so the
+/// examples must be opened by those same paths.
+fn enter_repo_root() {
+    std::env::set_current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).unwrap();
+}
+
 /// Every error example's rendered output must match its golden file byte for
 /// byte, and every golden file must correspond to an existing example (no
 /// orphans as examples are renamed/removed).
 #[test]
 fn error_examples_render_byte_identical_to_golden() {
+    enter_repo_root();
     let mut names: Vec<String> = std::fs::read_dir("examples/errors")
         .unwrap()
         .filter_map(|e| {

@@ -81,10 +81,18 @@ fn collect_yara(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Moves into the repo root, where the shared `examples/`, `translations/` and
+/// `tests/golden/` fixtures live; goldens embed root-relative paths, so the
+/// examples must be opened by those same paths.
+fn enter_repo_root() {
+    std::env::set_current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).unwrap();
+}
+
 /// Every example that is *meant* to work must run cleanly end to end (all of
 /// `examples/` except the deliberately-broken `examples/errors/`).
 #[test]
 fn all_non_error_examples_run_clean() {
+    enter_repo_root();
     let mut files = Vec::new();
     collect_yara(Path::new("examples"), &mut files);
     files.sort();
@@ -113,6 +121,7 @@ fn all_non_error_examples_run_clean() {
 /// (etc.) unnoticed across a refactor.
 #[test]
 fn every_error_example_fails_at_expected_stage() {
+    enter_repo_root();
     fn expected(name: &str) -> Stage {
         match name {
             "lex_error" => Stage::Lex,

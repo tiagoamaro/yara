@@ -1,16 +1,16 @@
 # examples/translations/
 
-Programs demonstrating Yara's full-vocabulary translation feature (`--vocabulary <path>`, `--keywords <path>` alias still works — see `src/translations/CLAUDE.md`).
+Programs demonstrating Yara's full-vocabulary translation feature (`--vocabulary <path>`, `--keywords <path>` alias still works — see `rust/src/translations/CLAUDE.md`).
 
 ## Status
 `kitchen_sink_pt.yara` verified end to end (2026-07-25):
 ```
-cargo run -- run examples/translations/kitchen_sink_pt.yara \
+cargo run --manifest-path rust/Cargo.toml -- run examples/translations/kitchen_sink_pt.yara \
   --vocabulary translations/pt.vocab
 ```
 runs clean and prints expected values for every section. `fatorial_pt.yara` runs clean standalone (no output). `hello_pt.yara` still verified:
 ```
-cargo run -- run examples/translations/hello_pt.yara --vocabulary translations/pt.vocab
+cargo run --manifest-path rust/Cargo.toml -- run examples/translations/hello_pt.yara --vocabulary translations/pt.vocab
 ```
 produces identical output to `examples/objects/hello.yara` (`5`, `10`, `3.14159`, `12.56636`).
 

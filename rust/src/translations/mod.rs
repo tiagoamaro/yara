@@ -525,7 +525,7 @@ mod tests {
     fn full_bundled_portuguese_file_parses() {
         let text = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/translations/pt.vocab"
+            "/../translations/pt.vocab"
         ))
         .unwrap();
         let vocab = parse_vocabulary(&text).unwrap();
