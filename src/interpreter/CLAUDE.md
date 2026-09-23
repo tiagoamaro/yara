@@ -7,12 +7,12 @@ Implemented. `Interpreter::new().run_program(&[Stmt]) -> Result<(), RuntimeError
 
 ## Layout
 Split into submodules for cohesive organization (behavior-preserving refactor):
-- **`mod.rs`** (556 lines) — module doc, `Value` enum + Display, `RuntimeError` + Diagnostic impl, `StackFrame`, `FunctionDecl`, `ClassDecl`, `Flow`, `Interpreter` struct, `new()`/`run_program()`, scope helpers (declare_var/set_var/lookup_var/push_scope/pop_scope), submodule declarations, and unit tests.
-- **`expressions.rs`** (269 lines) — expression evaluation: `eval_expr`, `eval_bool`, `eval_int`, `array_get`, `eval_binary_op`.
-- **`statements.rs`** (195 lines) — statement execution and control flow: `exec_stmt`, `exec_block`, `exec_function_body`, `exec_tail_stmt`.
+- **`mod.rs`** (783 lines) — module doc, `Value` enum + Display, `RuntimeError` + Diagnostic impl, `StackFrame`, `FunctionDecl`, `ClassDecl`, `Flow`, `Interpreter` struct, `new()`/`run_program()`, scope helpers (declare_var/set_var/lookup_var/push_scope/pop_scope), submodule declarations, and unit tests.
+- **`expressions.rs`** (297 lines) — expression evaluation: `eval_expr`, `eval_bool`, `eval_int`, `array_get`, `eval_binary_op`.
+- **`statements.rs`** (197 lines) — statement execution and control flow: `exec_stmt`, `exec_block`, `exec_function_body`, `exec_tail_stmt`.
 - **`calls.rs`** — function calls and builtins: `call_function`, `call_array_builtin` (builtin dispatcher with function-pointer dispatch), plus per-builtin evaluation functions `eval_len`/`eval_push`/`eval_get`/`eval_set`/`eval_pop` (array builtins), `eval_alloc`/`eval_deref`/`eval_set_deref`/`eval_free` (pointer builtins), and `eval_collect` (GC mark-and-sweep builtin). Each `EvalFn` is wired into the registry via `src/builtins.rs` function pointers. Also contains `collect_garbage` and `mark_value` (GC helper methods on `Interpreter`). Extracted helpers `heap_read`, `heap_write`, `heap_free` (behavior-preserving factoring: validate heap slots, shared by both free-function pointer builtins and new `Pointer#deref`/`Pointer#set_deref`/`Pointer#free` methods).
 - **`methods.rs`** — primitive-method evaluation: `eval_primitive_method` (dispatcher by `ReceiverKind` + method name), plus 25 individual `MethodEvalFn`s implementing execution for each primitive method. Registry in `src/methods.rs` maps `(ReceiverKind, name)` tuples to eval function pointers.
-- **`classes.rs`** (141 lines) — class/instance handling: `construct`, `call_method`, `run_method`.
+- **`classes.rs`** (573 lines) — class/instance handling: `construct`, `call_method`, `run_method`.
 
 ## Design
 - `mod.rs` carries a `///` mermaid flowchart on `Interpreter` showing `run_program`'s three passes (build `ClassDecl`s, `flatten_classes`, exec top-level stmts) and `eval_expr`'s call/construction/method/heap/GC dispatch — keep it in sync when that control flow changes.

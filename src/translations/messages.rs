@@ -12,14 +12,12 @@
 //! `vocab.msg("key", &[...])` must reproduce the old string exactly.
 //!
 //! Every `format!`-built error message in `lexer/`, `parser/`, `resolver/`,
-//! and `interpreter/` has been converted to a catalog entry (see
-//! `src/translations/CLAUDE.md`); `typechecker/` and `diagnostics/` are
-//! covered separately. A handful of non-error-message `format!` call sites
-//! remain untouched on purpose (stack-frame labels like `{class}.new`,
-//! compound type-name building like `Ptr<{inner}>`, test-only scratch
-//! strings) — those aren't user-facing diagnostic prose. Adding a new
-//! catalog entry never removes a stage's ability to also just `format!` a
-//! message directly; both styles coexist where conversion hasn't reached yet.
+//! `typechecker/` and `interpreter/`, plus the renderer's stage labels and
+//! call-stack words (`diag/`), has a catalog entry; the few fixed-string
+//! messages still inlined are listed in `src/translations/CLAUDE.md`.
+//! Stack-frame labels like `{class}.new`, compound type names like
+//! `Ptr<{inner}>`, and test-only strings aren't diagnostic prose, so they
+//! stay as plain `format!` calls.
 
 /// `(key, English template)` pairs. Keys are namespaced by stage
 /// (`lex/`, `parse/`, `resolve/`, `type/`, `runtime/`) so two stages can

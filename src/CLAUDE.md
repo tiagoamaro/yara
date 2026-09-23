@@ -32,7 +32,7 @@ end-to-end `tests/` possible (a binary-only crate can't be `use`d from tests).
   helper (resolver/typechecker/interpreter errors, via `diagnostics::render_with_map_and_vocab`
   passed `Some(&vocab)` — localizes the stage label and call-stack `in`/`at` words when
   `vocab` is a translated one). The same `Rc<Vocabulary>` is threaded into
-  `Lexer::with_keywords`, `Parser::with_vocabulary`, `resolver::resolve_imports`,
+  `Lexer::with_vocabulary`, `Parser::with_vocabulary`, `resolver::resolve_imports`,
   `TypeChecker::with_vocabulary`, and `Interpreter::with_vocabulary` — one vocabulary
   governs every stage of a given run. The `SourceMap` is built after parsing, seeded
   with the entry file path and source, then passed to the resolver; the resolver
