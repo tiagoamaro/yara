@@ -16,8 +16,13 @@ The same sources must compile with `mrbc` later, so every file sticks to the sub
 
 - No `require`/`require_relative` outside `lib/yara.rb`. That file is the load-order manifest; step 7 feeds the same list to `mrbc`.
 - No `Regexp`, `StringScanner`, `Set`, `Pathname`, `OptionParser`, `Ractor`, `ObjectSpace`. The lexer walks characters by hand, like the Rust one.
-- Allowed: classes, modules, `Struct`, `Array`, `Hash`, `String`, `Integer`, `Float`, `Comparable`, exceptions, `File.read`, `File.exist?`, `$stdout`/`$stderr`, `exit`.
-- Unverified until the step 0 spike: `Data.define`, `case`/`in`, `String#%`, `File.dirname`/`File.join`, keyword arguments with defaults. Don't use them until the spike confirms they work under mruby 4.0.0.
+- Allowed, each checked with a probe script under stock mruby 4.0.0 in step 0: classes, modules, `Struct`, `Data.define`, `case`/`in` (array and hash patterns), keyword arguments with defaults, `Comparable`, custom exception classes, `Array`, insertion-ordered `Hash`, `String#chars`/`each_char`/`ord`/`strip`/`upcase`, `String#%` and `format`, `Integer()`, `File.read`/`File.exist?`/`File.dirname`/`File.join`, `ARGV`, `$stdout`/`$stderr`.
+- `exit` needs the `mruby-exit` core gem, which the default gembox leaves out.
+
+### mruby build settings (step 7)
+- `conf.gembox "default"` plus `conf.gem core: "mruby-exit"`.
+- `conf.cc.defines << "MRB_UTF8_STRING"`. Without it strings are byte arrays (`"héllo".chars.size` is 6), which would break column numbers in diagnostics for non-ASCII source such as the PT examples.
+- The default gembox already includes `mruby-bigint`, `mruby-io`, `mruby-sprintf`, `mruby-string-ext` and `mruby-data`.
 
 ## Layout
 
@@ -45,17 +50,17 @@ File names use full words, matching the Rust side. Every method gets a YARD comm
 
 | Behavior | Rust today | Plain Ruby | Plan |
 |---|---|---|---|
-| Printing a whole Float | `5` | `5.0` | Port Rust's `{}` formatting in `Value#to_s`, including large and small exponents |
-| Integer overflow | panics in debug builds, wraps in release builds; no example covers it | becomes a Bignum (CRuby) or a Float (mruby) | Raise a runtime error ("integer overflow in `+`", and so on) at the i64 bounds in `+ - * /`, unary `-`, `abs()` and `Float#to_i()`; unit-tested in Ruby only, since there is no Rust behavior to match |
-| Integer `/` with negative operands | truncates (`-7 / 2 = -3`) | floors (`-4`) | Truncate by hand: `(a.abs / b.abs) * sign` |
+| Printing a Float | `5`, `0.30000000000000004`, `100000000000000000000` | CRuby: `5.0`, `0.30000000000000004`, `1.0e+20`; mruby: `5.0`, `0.3` (fewer digits), `1.0e+20` | Port Rust's shortest round-trip `{}` formatting in `Value#to_s` by hand; never rely on `Float#to_s`, since CRuby and mruby disagree too |
+| Integer overflow | panics in debug builds, wraps in release builds; no example covers it | becomes a Bignum (CRuby and mruby, which bundles `mruby-bigint`) | Raise a runtime error ("integer overflow in `+`", and so on) at the i64 bounds in `+ - * /`, unary `-`, `abs()` and `Float#to_i()`; unit-tested in Ruby only, since there is no Rust behavior to match |
+| Integer `/` with negative operands | truncates (`-7 / 2 = -3`) | floors (`-4`) in both runtimes | Truncate by hand: `(a.abs / b.abs) * sign` |
 | `"12abc".to_i()` | runtime error "cannot parse" | `12` | Validate digits by hand, raise the same message |
-| `trim`, `upper`, `lower` | Unicode whitespace and case rules | ASCII-leaning in mruby | Match Rust for ASCII, note the gap for non-ASCII |
+| `trim`, `upper`, `lower` | Unicode whitespace and case rules | CRuby is Unicode-aware; mruby changes ASCII only (`"É".downcase` stays `É`) | Match Rust for ASCII, note the gap for non-ASCII |
 
 ## Steps
 
 ### 0. Toolchain and mruby spike
 - Create `bin/yara`, `lib/yara.rb`, `Rakefile`, and one minitest smoke test.
-- Build stock mruby 4.0.0 once in a scratch directory and run a probe script that uses every item in the "Unverified" list. Record the results in the section above: move each item to "Allowed" or to the "No" list.
+- Build stock mruby 4.0.0 once in a scratch directory, run a probe script for each uncertain feature, and record the results above.
 **Gate:** `rake test` green; the spike results are written down.
 
 ### 1. Stdout goldens and the parity harness
@@ -97,7 +102,7 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 
 ## Progress
 
-- [ ] 0. Toolchain and mruby spike
+- [x] 0. Toolchain and mruby spike (2026-09-22)
 - [ ] 1. Stdout goldens and harness
 - [ ] 2. AST, diagnostics
 - [ ] 3. Lexer, parser
