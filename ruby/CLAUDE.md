@@ -8,6 +8,14 @@ Step 0 done: `bin/yara` (usage error only, matching `rust/src/main.rs`), `lib/ya
 - `lib/yara/diagnostics.rb`: `Span`, `Frame`, `SourceMap`, `render`/`render_with_map` (optional vocabulary, anything with `msg(key, args)`), `render_snippet`, and `Error`, the base class every stage's error subclasses with its own `kind`. `source_lines` reproduces Rust's `str::lines` so snippets and line counts stay byte-identical.
 - `lib/yara/environment.rb`: the scope stack; `lookup` returns nil when unbound, so use `bound?` where a bound value can be nil.
 
+Step 3 done:
+- `lib/yara/lexer.rb`: `Token` (`kind` symbol plus `value`), `LexError`, `Lexer`. `Lexer.describe(token)` prints a token as Rust's `TokenKind` display does (`Ident("x")`, `Float(5.0)`), which parse errors embed. Non-ASCII letters count as identifier characters, a simplification of Rust's Unicode table marked `ponytail:`.
+- `lib/yara/parser.rb` plus `parser/statements.rb` and `parser/expressions.rb` (reopening `Parser`), with `ParseError`.
+- `lib/yara/messages.rb`: the 128-key English catalog, generated from `rust/src/translations/messages.rs`, and `Messages.substitute`.
+- `lib/yara/translations.rb`: `Vocabulary` with `english`, `keywords`, `canonical_type` and `msg`; the file parser comes in step 7.
+- `lib/yara/rust_format.rb`: Rust's `{}`/`{:?}` for floats and `{:?}` for strings, checked against real Rust output.
+- `lib/yara/cli.rb` runs lex and parse and renders their errors; `PORTED_STAGES` includes both stages.
+
 Run `make test` from `ruby/` (or `make parity`, `make capture`, `make run FILE=examples/hello.yara`; see `Makefile`). Follow `PLAN.md` (steps, gates, parity traps, progress checklist). Ruby version comes from the repo-root `.tool-versions`. `rust/` stays the executable specification until the parity gate passes.
 
 ## Parity target

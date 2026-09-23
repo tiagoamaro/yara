@@ -50,7 +50,7 @@ File names use full words, matching the Rust side. Every method gets a YARD comm
 
 | Behavior | Rust today | Plain Ruby | Plan |
 |---|---|---|---|
-| Printing a Float | `5`, `0.30000000000000004`, `100000000000000000000` | CRuby: `5.0`, `0.30000000000000004`, `1.0e+20`; mruby: `5.0`, `0.3` (fewer digits), `1.0e+20` | Port Rust's shortest round-trip `{}` formatting in `Value#to_s` by hand; never rely on `Float#to_s`, since CRuby and mruby disagree too |
+| Printing a Float | `5`, `0.30000000000000004`, `100000000000000000000` | CRuby: `5.0`, `0.30000000000000004`, `1.0e+20`; mruby: `5.0`, `0.3` (fewer digits), `1.0e+20` | `RustFormat.float_display`/`float_debug` (step 3) rebuild Rust's `{}`/`{:?}` from the shortest `%e` precision that round-trips; never use `Float#to_s`, since CRuby and mruby disagree too |
 | Integer overflow | panics in debug builds, wraps in release builds; no example covers it | becomes a Bignum (CRuby and mruby, which bundles `mruby-bigint`) | Raise a runtime error ("integer overflow in `+`", and so on) at the i64 bounds in `+ - * /`, unary `-`, `abs()` and `Float#to_i()`; unit-tested in Ruby only, since there is no Rust behavior to match |
 | Integer `/` with negative operands | truncates (`-7 / 2 = -3`) | floors (`-4`) in both runtimes | Truncate by hand: `(a.abs / b.abs) * sign` |
 | `"12abc".to_i()` | runtime error "cannot parse" | `12` | Validate digits by hand, raise the same message |
@@ -75,7 +75,7 @@ Port `rust/src/ast/`, `diagnostics/` (`Span`, `SourceMap`, `render`, the snippet
 
 ### 3. Lexer, then parser
 Port each stage along with its unit tests. Keyword and type-alias normalization happens here, as in Rust.
-**Gate:** `lex_error` and `parse_error` goldens pass in the harness; every other example lexes and parses without error.
+**Gate:** `lex_error` and `parse_error` goldens pass in the harness; every other example lexes and parses without error (the Portuguese-vocabulary ones wait for step 7).
 
 ### 4. Resolver
 `import` splicing, cycle detection, virtual line shifting, `SourceMap` registration.
@@ -90,7 +90,7 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 **Gate:** the harness is fully green (all stdout and stderr goldens), with no skips left.
 
 ### 7. Vocabulary, CLI, mruby executable
-- `translations.rb` and `messages.rb` (the 128-key catalog), with `--vocabulary` and `--keywords` in the CLI. The PT examples must pass.
+- The vocabulary file parser in `translations.rb` (the 128-key catalog in `messages.rb` and an English-only `Vocabulary` already exist from step 3), with `--vocabulary` and `--keywords` in the CLI. The PT examples must pass.
 - `mruby/build_config.rb` with the needed core gems, plus a small C launcher that embeds the `mrbc`-compiled bytecode of the `lib/yara.rb` load order and passes `ARGV`. `rake build` produces `ruby/build/yara`.
 - The harness gains a mode that runs the mruby binary instead of CRuby.
 **Gate:** the harness is green through the mruby binary on a machine with no Ruby installed (CI job).
@@ -105,7 +105,7 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 - [x] 0. Toolchain and mruby spike (2026-09-22)
 - [x] 1. Stdout goldens and harness (2026-09-22)
 - [x] 2. AST, diagnostics (2026-09-22)
-- [ ] 3. Lexer, parser
+- [x] 3. Lexer, parser (2026-09-22)
 - [ ] 4. Resolver
 - [ ] 5. Typechecker
 - [ ] 6. Interpreter
