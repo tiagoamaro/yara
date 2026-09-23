@@ -104,7 +104,7 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 
 - [x] 0. Toolchain and mruby spike (2026-09-22)
 - [x] 1. Stdout goldens and harness (2026-09-22)
-- [ ] 2. AST, diagnostics
+- [x] 2. AST, diagnostics (2026-09-22)
 - [ ] 3. Lexer, parser
 - [ ] 4. Resolver
 - [ ] 5. Typechecker
