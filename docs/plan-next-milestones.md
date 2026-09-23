@@ -30,7 +30,7 @@ Done and committed, suite green (215 unit + 11 integration, fmt clean):
 1. Structure item 5 (uniform `Span` in error types) — opportunistic.
 2. Message-catalog leftovers: route the ~10 fixed-string messages still built with `.to_string()` through `Vocabulary::msg` (list in `rust/src/translations/CLAUDE.md`), localize lex/parse-stage labels (`main.rs`'s `stage` still uses plain `render`), and grow `translations/pt.vocab`'s `[messages]` beyond its 4 keys.
 3. ~~Promote `kitchen_sink.yara` to also import the pointer examples, plus a `free`-then-`collect` interaction example.~~ **Done** (2026-07-24): `examples/pointers/free_then_collect.yara` added (hand-freed slot not double-counted by a later sweep; second sweep reclaims 0); `kitchen_sink.yara` now imports `pointers/basic`, `pointers/leak`, `pointers/linked_list`. The `collect()` examples stay out of the kitchen sink on purpose — imports splice into one program over one shared heap, so `gc`/`free_then_collect` would reclaim each other's garbage and print counts different from their documented standalone output; and `linked_list`/`circular_list` both declare `class Node`, so only one can be imported.
-4. Phase 6: replace the Rust implementation with Ruby and ship it as a standalone mruby-based executable.
+4. Phase 6: replace the Rust implementation with Ruby and ship it as a standalone mruby-based executable. Step-by-step plan: `ruby/PLAN.md`.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
 Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.
