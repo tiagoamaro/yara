@@ -54,6 +54,7 @@ File names use full words, matching the Rust side. Every method gets a YARD comm
 | Integer overflow | panics in debug builds, wraps in release builds; no example covers it | becomes a Bignum (CRuby and mruby, which bundles `mruby-bigint`) | Raise a runtime error ("integer overflow in `+`", and so on) at the i64 bounds in `+ - * /`, unary `-`, `abs()` and `Float#to_i()`; unit-tested in Ruby only, since there is no Rust behavior to match |
 | Integer `/` with negative operands | truncates (`-7 / 2 = -3`) | floors (`-4`) in both runtimes | Truncate by hand: `(a.abs / b.abs) * sign` |
 | `"12abc".to_i()` | runtime error "cannot parse" | `12` | Validate digits by hand, raise the same message |
+| Which class an inheritance cycle names | whichever `HashMap` iteration reaches first, different between runs | Hash order is insertion order | Name the first cycle member reached in declaration order; no golden covers it |
 | `trim`, `upper`, `lower` | Unicode whitespace and case rules | CRuby is Unicode-aware; mruby changes ASCII only (`"É".downcase` stays `É`) | Match Rust for ASCII, note the gap for non-ASCII |
 
 ## Steps
@@ -107,7 +108,7 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 - [x] 2. AST, diagnostics (2026-09-22)
 - [x] 3. Lexer, parser (2026-09-22)
 - [x] 4. Resolver (2026-09-24)
-- [ ] 5. Typechecker
+- [x] 5. Typechecker (2026-09-24)
 - [ ] 6. Interpreter
 - [ ] 7. Vocabulary, CLI, mruby build
 - [ ] 8. Retire Rust

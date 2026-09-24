@@ -9,6 +9,11 @@ module Yara
   module AST
     BINARY_OPERATORS = [:add, :sub, :mul, :div, :eq, :not_eq, :lt, :gt, :lt_eq, :gt_eq].freeze
 
+    # Each binary operator's source spelling, for error messages.
+    OPERATOR_SYMBOLS = {
+      add: "+", sub: "-", mul: "*", div: "/", eq: "==", not_eq: "!=", lt: "<", gt: ">", lt_eq: "<=", gt_eq: ">="
+    }.freeze
+
     # Behavior shared by every node.
     module Node
       # Adds `offset` to this node's line and every nested node's line,

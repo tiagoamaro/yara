@@ -20,6 +20,13 @@ Step 4 done:
 - `lib/yara/resolver.rb`: `ResolveError` and `Resolver.resolve_imports`, mirroring `rust/src/resolver/`. `import_path` reproduces Rust's `Path::join` spelling (no `./` for a bare entry file name), since the path shows up in messages and `-->` lines. `File.realpath` stands in for `canonicalize`; OS errors print via `CLI.os_error`. Like Rust, importing the same file twice anywhere in a run is a cycle error.
 - `cli.rb` now resolves imports and renders their errors through the `SourceMap`; `PORTED_STAGES` includes `import error`. No example has an import-error golden, so `test/resolver_test.rb` covers the messages; they were also checked byte-identical against the Rust binary.
 
+Step 5 done:
+- `lib/yara/typechecker.rb`: `Type` (a `Data` with `kind` and `inner`; `accepts?` is Rust's `assignable`), `TypeError`, and `TypeChecker` with `check_program`; `typechecker/expressions.rb`, `statements.rb`, `calls.rb`, `classes.rb` and `methods.rb` reopen it, mirroring the Rust split.
+- `lib/yara/builtins.rb` and `lib/yara/methods.rb`: the arity registries. Each stage dispatches by name with `send` (`check_builtin_<name>`, `check_<kind>_<name>`); primitive methods whose result depends only on the receiver sit in `TypeChecker::FIXED_RESULTS` instead.
+- `Vocabulary` gained `canonical_builtin`, `canonical_method`, `type_name` and `localized_method_names`, identity for English.
+- An inheritance cycle is reported at the first of its classes reached in declaration order; Rust's choice depends on `HashMap` order and changes between runs.
+- `cli.rb` typechecks after resolving; `PORTED_STAGES` includes `type error`. Error messages were diffed against the Rust binary over the unit-test sources.
+
 Run `make test` from `ruby/` (or `make parity`, `make capture`, `make run FILE=examples/hello.yara`; see `Makefile`). Follow `PLAN.md` (steps, gates, parity traps, progress checklist). Ruby version comes from the repo-root `.tool-versions`. `rust/` stays the executable specification until the parity gate passes.
 
 ## Parity target

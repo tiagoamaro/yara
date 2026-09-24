@@ -43,13 +43,14 @@ module Yara
 
       map = Diagnostics::SourceMap.new(path, source)
       begin
-        Resolver.resolve_imports(program, path, map, vocabulary)
+        program = Resolver.resolve_imports(program, path, map, vocabulary)
+        TypeChecker.new(vocabulary).check_program(program)
       rescue Diagnostics::Error => e
         stderr.print(Diagnostics.render_with_map(e, map, vocabulary))
         return 1
       end
 
-      stderr.puts("yara: the Ruby pipeline stops after resolving imports for now")
+      stderr.puts("yara: the Ruby pipeline stops after typechecking for now")
       1
     end
 
