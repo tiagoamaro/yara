@@ -51,7 +51,7 @@ File names use full words, matching the Rust side. Every method gets a YARD comm
 | Behavior | Rust today | Plain Ruby | Plan |
 |---|---|---|---|
 | Printing a Float | `5`, `0.30000000000000004`, `100000000000000000000` | CRuby: `5.0`, `0.30000000000000004`, `1.0e+20`; mruby: `5.0`, `0.3` (fewer digits), `1.0e+20` | `RustFormat.float_display`/`float_debug` (step 3) rebuild Rust's `{}`/`{:?}` from the shortest `%e` precision that round-trips; never use `Float#to_s`, since CRuby and mruby disagree too |
-| Integer overflow | panics in debug builds, wraps in release builds; no example covers it | becomes a Bignum (CRuby and mruby, which bundles `mruby-bigint`) | Raise a runtime error ("integer overflow in `+`", and so on) at the i64 bounds in `+ - * /`, unary `-`, `abs()` and `Float#to_i()`; unit-tested in Ruby only, since there is no Rust behavior to match |
+| Integer overflow | panics in debug builds, wraps in release builds; no example covers it | becomes a Bignum (CRuby and mruby, which bundles `mruby-bigint`) | Raise a runtime error ("integer overflow in `+`", and so on) at the i64 bounds in `+ - * /`, unary `-` and `abs()`; unit-tested in Ruby only, since there is no Rust behavior to match. `Float#to_i()` saturates and maps NaN to 0 instead, because Rust's `as i64` defines that |
 | Integer `/` with negative operands | truncates (`-7 / 2 = -3`) | floors (`-4`) in both runtimes | Truncate by hand: `(a.abs / b.abs) * sign` |
 | `"12abc".to_i()` | runtime error "cannot parse" | `12` | Validate digits by hand, raise the same message |
 | Which class an inheritance cycle names | whichever `HashMap` iteration reaches first, different between runs | Hash order is insertion order | Name the first cycle member reached in declaration order; no golden covers it |
@@ -109,6 +109,6 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 - [x] 3. Lexer, parser (2026-09-22)
 - [x] 4. Resolver (2026-09-24)
 - [x] 5. Typechecker (2026-09-24)
-- [ ] 6. Interpreter
+- [x] 6. Interpreter (2026-09-24)
 - [ ] 7. Vocabulary, CLI, mruby build
 - [ ] 8. Retire Rust

@@ -25,7 +25,7 @@ Done and committed, suite green (215 unit + 11 integration, fmt clean):
 - **PT examples** (2026-09-05) — `examples/translations/kitchen_sink_pt.yara` (self-contained PT mirror of `kitchen_sink.yara`) and `fatorial_pt.yara` (imported by it).
 - **Phase 6 plan** (2026-09-07) — Ruby rewrite + mruby distribution written up below.
 - **Phase 6 step 0** (2026-09-22): repo split into `rust/` (the crate) and `ruby/` (empty); examples, vocabularies, goldens, docs and editors stay at the root as shared fixtures.
-- **Phase 6 steps 1 to 5** (2026-09-22 to 2026-09-24): Rust stdout goldens and the Ruby parity harness, then AST, diagnostics, lexer, parser, resolver and typechecker ported to Ruby; progress per step in `ruby/PLAN.md`.
+- **Phase 6 steps 1 to 6** (2026-09-22 to 2026-09-24): Rust stdout goldens and the Ruby parity harness, then AST, diagnostics, lexer, parser, resolver, typechecker and interpreter ported to Ruby; progress per step in `ruby/PLAN.md`.
 
 **Next up (in order):**
 1. Structure item 5 (uniform `Span` in error types) — opportunistic.

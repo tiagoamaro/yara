@@ -59,6 +59,14 @@ module Yara
       end
     end
 
+    # How `Boolean#to_s` spells a boolean: the keyword the lexer reads for it.
+    #
+    # @param value [Boolean]
+    # @return [String]
+    def bool_word(value)
+      @keywords.key(value ? :true : :false) || value.to_s
+    end
+
     # @param names [Array<String>] canonical primitive-method names
     # @return [Array<String>] each spelled in this vocabulary
     def localized_method_names(names)

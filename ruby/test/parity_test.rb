@@ -8,7 +8,7 @@ require_relative "support/examples"
 class ParityTest < Minitest::Test
   # Stages the Ruby pipeline implements so far, in `Examples::STAGES` order.
   # An example is only checked once every stage it reaches is ported.
-  PORTED_STAGES = ["lex error", "parse error", "import error", "type error"].freeze
+  PORTED_STAGES = ["lex error", "parse error", "import error", "type error", "runtime error"].freeze
 
   BINARY = File.expand_path("../bin/yara", __dir__)
 
@@ -25,6 +25,7 @@ class ParityTest < Minitest::Test
     stderr_path = Examples.stderr_path(example)
     expected_stderr = stderr_path ? read_fixture(stderr_path) : ""
     skip("needs #{last_stage(expected_stderr)}, not ported yet") unless ported?(expected_stderr)
+    skip("needs the vocabulary file parser (step 7)") if Examples.run_arguments(example).include?("--vocabulary")
 
     stdout, stderr, status = Open3.capture3(BINARY, *Examples.run_arguments(example), chdir: Examples::ROOT)
 
