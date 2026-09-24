@@ -32,15 +32,24 @@ module Yara
         return 1
       end
 
+      vocabulary = Vocabulary.english
       begin
-        tokens = Lexer.new(source).tokenize
-        Parser.new(tokens).parse_program
+        tokens = Lexer.new(source, vocabulary).tokenize
+        program = Parser.new(tokens, vocabulary).parse_program
       rescue Diagnostics::Error => e
         stderr.print(Diagnostics.render(e, path, source))
         return 1
       end
 
-      stderr.puts("yara: the Ruby pipeline stops after parsing for now")
+      map = Diagnostics::SourceMap.new(path, source)
+      begin
+        Resolver.resolve_imports(program, path, map, vocabulary)
+      rescue Diagnostics::Error => e
+        stderr.print(Diagnostics.render_with_map(e, map, vocabulary))
+        return 1
+      end
+
+      stderr.puts("yara: the Ruby pipeline stops after resolving imports for now")
       1
     end
 

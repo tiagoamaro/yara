@@ -16,6 +16,10 @@ Step 3 done:
 - `lib/yara/rust_format.rb`: Rust's `{}`/`{:?}` for floats and `{:?}` for strings, checked against real Rust output.
 - `lib/yara/cli.rb` runs lex and parse and renders their errors; `PORTED_STAGES` includes both stages.
 
+Step 4 done:
+- `lib/yara/resolver.rb`: `ResolveError` and `Resolver.resolve_imports`, mirroring `rust/src/resolver/`. `import_path` reproduces Rust's `Path::join` spelling (no `./` for a bare entry file name), since the path shows up in messages and `-->` lines. `File.realpath` stands in for `canonicalize`; OS errors print via `CLI.os_error`. Like Rust, importing the same file twice anywhere in a run is a cycle error.
+- `cli.rb` now resolves imports and renders their errors through the `SourceMap`; `PORTED_STAGES` includes `import error`. No example has an import-error golden, so `test/resolver_test.rb` covers the messages; they were also checked byte-identical against the Rust binary.
+
 Run `make test` from `ruby/` (or `make parity`, `make capture`, `make run FILE=examples/hello.yara`; see `Makefile`). Follow `PLAN.md` (steps, gates, parity traps, progress checklist). Ruby version comes from the repo-root `.tool-versions`. `rust/` stays the executable specification until the parity gate passes.
 
 ## Parity target

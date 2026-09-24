@@ -106,7 +106,7 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 - [x] 1. Stdout goldens and harness (2026-09-22)
 - [x] 2. AST, diagnostics (2026-09-22)
 - [x] 3. Lexer, parser (2026-09-22)
-- [ ] 4. Resolver
+- [x] 4. Resolver (2026-09-24)
 - [ ] 5. Typechecker
 - [ ] 6. Interpreter
 - [ ] 7. Vocabulary, CLI, mruby build

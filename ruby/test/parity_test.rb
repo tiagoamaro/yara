@@ -8,7 +8,7 @@ require_relative "support/examples"
 class ParityTest < Minitest::Test
   # Stages the Ruby pipeline implements so far, in `Examples::STAGES` order.
   # An example is only checked once every stage it reaches is ported.
-  PORTED_STAGES = ["lex error", "parse error"].freeze
+  PORTED_STAGES = ["lex error", "parse error", "import error"].freeze
 
   BINARY = File.expand_path("../bin/yara", __dir__)
 
