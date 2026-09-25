@@ -91,7 +91,7 @@ h.count = 10               # field write
 print(h.area(2.0))         # method call
 ```
 
-No class-level/static methods other than `.new`, no visibility modifiers — everything is public. Inside a method body, bare names resolve first to locals/params, then to the instance's own fields/consts (implicit `self`, no `self.`/`@` sigil needed) — this is why `count = number` inside `initializer` sets the instance variable rather than creating a local. There is no `self` *expression*, though — a method can't call one of its own class's other methods without a receiver, so intra-class method calls aren't possible yet (see `ruby/lib/yara/interpreter/CLAUDE.md`). Instance vars declared with no value (`count: Integer`) start out effectively unset until a method assigns them; reading one before that happens is a latent gap (see `ruby/lib/yara/typechecker/CLAUDE.md`). A class name doubles as its own type annotation (`h: Hello = ...`). Class instances have reference semantics like arrays: assigning `a = b` (both `Hello`) makes `a`/`b` alias the same instance.
+No class-level/static methods other than `.new`, no visibility modifiers — everything is public. Inside a method body, bare names resolve first to locals/params, then to the instance's own fields/consts (implicit `self`, no `self.`/`@` sigil needed) — this is why `count = number` inside `initializer` sets the instance variable rather than creating a local. There is no `self` *expression*, though — a method can't call one of its own class's other methods without a receiver, so intra-class method calls aren't possible yet (see `lib/yara/interpreter/CLAUDE.md`). Instance vars declared with no value (`count: Integer`) start out effectively unset until a method assigns them; reading one before that happens is a latent gap (see `lib/yara/typechecker/CLAUDE.md`). A class name doubles as its own type annotation (`h: Hello = ...`). Class instances have reference semantics like arrays: assigning `a = b` (both `Hello`) makes `a`/`b` alias the same instance.
 
 User-defined instance methods (defined in a `class` body) are distinct from the parallel registry of methods on primitive types (described in `## Methods on primitives` below). Methods cannot currently be user-defined on primitive types; the primitive-method registry is built into the compiler.
 
@@ -161,7 +161,7 @@ Method reference (receiver kind → method → arity → return type):
 - **Boolean**: `to_s()->String`
 - **Pointer**: `deref()->T`, `set_deref(T)->Nil`, `free()->Nil`
 
-Method calls on primitive types are type-checked and dispatched via a parallel registry (`ruby/lib/yara/methods.rb`), similar to how free-function builtins (`len(xs)`, `push(xs, v)`, ...) work. Both syntaxes coexist: `xs.size()` and `len(xs)` call the same underlying logic.
+Method calls on primitive types are type-checked and dispatched via a parallel registry (`lib/yara/methods.rb`), similar to how free-function builtins (`len(xs)`, `push(xs, v)`, ...) work. Both syntaxes coexist: `xs.size()` and `len(xs)` call the same underlying logic.
 
 Errors: an unknown method on a primitive type is a type error `` `{Type}` has no method `{method}` (available: ...) ``. Passing the wrong number of arguments to a method is a type error `` `{Type}#{method}` expects N argument(s), found M ``. String-to-number conversion methods (`to_i()`, `to_f()` on invalid input) are runtime errors: `` cannot parse `{s}` as an Integer `` or `` cannot parse `{s}` as a Float ``.
 

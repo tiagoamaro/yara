@@ -3,8 +3,8 @@ require "open3"
 require_relative "support/examples"
 
 # Runs every shared example through `bin/yara` and compares stdout, stderr and
-# exit status with the committed expected output (`tests/stdout/`,
-# `tests/golden/`). One test per example.
+# exit status with the committed expected output (`test/stdout/`,
+# `test/golden/`). One test per example.
 class ParityTest < Minitest::Test
   # `YARA_BINARY` swaps in another executable, such as the mruby build.
   BINARY = File.expand_path(ENV.fetch("YARA_BINARY", "bin/yara"), File.expand_path("..", __dir__))

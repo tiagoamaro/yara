@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # Records what `bin/yara` prints for every example as its expected output:
-# `tests/stdout/` for each example and `tests/golden/` for each error
+# `test/stdout/` for each example and `test/golden/` for each error
 # example's stderr. Run it after adding an example, then review the diff
-# before committing. Run from anywhere: `ruby ruby/script/capture_output.rb`.
+# before committing. Run from anywhere: `ruby script/capture_output.rb`.
 require "fileutils"
 require "open3"
 require_relative "../test/support/examples"

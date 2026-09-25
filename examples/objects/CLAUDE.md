@@ -1,7 +1,7 @@
 # examples/objects/
 
 Demonstrates Yara's `class` feature, including single-parent inheritance — see
-`ruby/lib/yara/typechecker/CLAUDE.md`/`ruby/lib/yara/interpreter/CLAUDE.md` for the full design.
+`lib/yara/typechecker/CLAUDE.md`/`lib/yara/interpreter/CLAUDE.md` for the full design.
 
 ## Status
 `hello.yara` and `inheritance.yara` verified end to end (2026-07-25).

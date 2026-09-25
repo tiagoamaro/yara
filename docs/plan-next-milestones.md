@@ -27,15 +27,16 @@ Done and committed, suite green (215 unit + 11 integration, fmt clean):
 - **Phase 6 step 0** (2026-09-22): repo split into `rust/` (the crate) and `ruby/` (empty); examples, vocabularies, goldens, docs and editors stay at the root as shared fixtures.
 - **Phase 6 steps 1 to 7** (2026-09-22 to 2026-09-24): Rust stdout goldens and the Ruby parity harness, then AST, diagnostics, lexer, parser, resolver, typechecker, interpreter and vocabulary files ported to Ruby, plus the standalone mruby executable; progress per step in `ruby/PLAN.md`.
 
-- **Phase 6 complete** (2026-09-25): `rust/` deleted; Ruby in `ruby/` is the only implementation. CI runs the Ruby tests, builds `ruby/build/yara` on Linux and macOS, and checks every example through it, including in a container without Ruby. Stage docs moved to `ruby/lib/yara/CLAUDE.md` and its `parser/`, `typechecker/` and `interpreter/` folders; `docs/architecture.md` describes the Ruby code. The Rust-specific structure items below (1, 3, 4, 5) are history.
+- **Repo layout** (2026-09-25): the Ruby code moved from `ruby/` to the repo root, and the expected output from `tests/` to `test/stdout/` and `test/golden/`, so every command runs from the root.
+- **Phase 6 complete** (2026-09-25): `rust/` deleted; Ruby in `ruby/` is the only implementation. CI runs the Ruby tests, builds `build/yara` on Linux and macOS, and checks every example through it, including in a container without Ruby. Stage docs moved to `lib/yara/CLAUDE.md` and its `parser/`, `typechecker/` and `interpreter/` folders; `docs/architecture.md` describes the Ruby code. The Rust-specific structure items below (1, 3, 4, 5) are history.
 
 **Next up (in order):**
-1. Message-catalog leftovers: route the fixed-string messages still hardcoded in English (listed in `ruby/lib/yara/CLAUDE.md`) through `Vocabulary#msg`, localize lex/parse-stage labels (`cli.rb` renders those with plain `Diagnostics.render`), and grow `translations/pt.vocab`'s `[messages]` beyond its 4 keys.
+1. Message-catalog leftovers: route the fixed-string messages still hardcoded in English (listed in `lib/yara/CLAUDE.md`) through `Vocabulary#msg`, localize lex/parse-stage labels (`cli.rb` renders those with plain `Diagnostics.render`), and grow `translations/pt.vocab`'s `[messages]` beyond its 4 keys.
 2. Unicode case mapping for `upper`/`lower` under mruby, which changes ASCII letters only; needed once an example relies on it.
 3. Native codegen (LLVM/Cranelift or C transpile), deferred.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
-Gate between phases: `make test` in `ruby/` green, plus `make parity-mruby` for anything that could behave differently under mruby.
+Gate between phases: `make test` green, plus `make parity-mruby` for anything that could behave differently under mruby.
 
 ---
 

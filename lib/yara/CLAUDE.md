@@ -1,8 +1,8 @@
-# ruby/lib/yara/
+# lib/yara/
 
 The pipeline, `lexer` → `parser` → `resolver` → `typechecker` → `interpreter`, plus the files every stage shares. `parser/`, `typechecker/` and `interpreter/` have their own `CLAUDE.md`. `docs/architecture.md` walks the control flow with diagrams; keep both in sync when a stage's algorithm changes.
 
-Everything here must also compile with `mrbc`: no `require` outside `../yara.rb`, and only the Ruby subset listed in `ruby/PLAN.md`.
+Everything here must also compile with `mrbc`: no `require` outside `../yara.rb`, and only the Ruby subset listed in `docs/ruby-rewrite-plan.md`.
 
 ## Shared files
 

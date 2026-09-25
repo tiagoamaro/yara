@@ -1,5 +1,7 @@
 # Ruby Implementation Plan
 
+This plan is finished. Since then the code moved from `ruby/` to the repo root and the expected output from `tests/` to `test/`, so paths below are as they were during the rewrite. The mruby-compatible Ruby subset and the parity traps still apply.
+
 Phase 6 of `docs/plan-next-milestones.md`, broken into steps we can follow and tick off: port the Rust implementation to Ruby and ship it as a standalone mruby executable. Every step ends with its gate green.
 
 `rust/` is frozen: it stays exactly as it is and serves as the executable specification. The Ruby port reproduces its observable behavior (stdout, stderr, exit status) and never requires a Rust change. The Rust binary is only run, to capture goldens, until step 8 retires it.

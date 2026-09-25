@@ -1,4 +1,4 @@
-# ruby/lib/yara/typechecker/
+# lib/yara/typechecker/
 
 Static checking of a resolved program. `../typechecker.rb` holds `Type`, `TypeError` and `TypeChecker` (`check_program`, `resolve_type`, `type_error`); `expressions.rb`, `statements.rb`, `calls.rb`, `classes.rb` and `methods.rb` reopen `TypeChecker`.
 

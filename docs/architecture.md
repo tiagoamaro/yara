@@ -1,6 +1,6 @@
 # Yara Architecture
 
-How Yara turns a `.yara` file into running output, traced through the real code in `ruby/lib/yara/`. Written for anyone studying how a programming language is built: every box below names a real class or method, not an idealized textbook stage.
+How Yara turns a `.yara` file into running output, traced through the real code in `lib/yara/`. Written for anyone studying how a programming language is built: every box below names a real class or method, not an idealized textbook stage.
 
 ## The pipeline
 
@@ -27,9 +27,9 @@ Every stage's error class (`LexError`, `ParseError`, `ResolveError`, `TypeError`
 
 Errors in imported files resolve through `Diagnostics::SourceMap`: the resolver gives each imported file a disjoint range of virtual line numbers, shifts the imported AST into that range, and `render_with_map` maps a diagnostic's virtual line back to the file, its local line and its snippet.
 
-Beyond the stages, a few files are shared, each the single source of truth for one concern: `diagnostics.rb` (rendering), `environment.rb` (the scope stack the typechecker fills with types and the interpreter with values), `types.rb` (alias normalization, `Int` to `Integer`), `builtins.rb` and `methods.rb` (the builtin and primitive-method registries), `messages.rb` (the English message catalog) and `rust_format.rb` (number formatting). `ruby/lib/yara/CLAUDE.md` describes each.
+Beyond the stages, a few files are shared, each the single source of truth for one concern: `diagnostics.rb` (rendering), `environment.rb` (the scope stack the typechecker fills with types and the interpreter with values), `types.rb` (alias normalization, `Int` to `Integer`), `builtins.rb` and `methods.rb` (the builtin and primitive-method registries), `messages.rb` (the English message catalog) and `rust_format.rb` (number formatting). `lib/yara/CLAUDE.md` describes each.
 
-The same Ruby files run two ways: under CRuby through `ruby/bin/yara`, and compiled to mruby bytecode inside the standalone `ruby/build/yara` executable (see `ruby/README.md`).
+The same Ruby files run two ways: under CRuby through `bin/yara`, and compiled to mruby bytecode inside the standalone `build/yara` executable (see `README.md`).
 
 ## Lexer: character to token
 
@@ -126,4 +126,4 @@ Method calls (`run_method`) implement implicit `self` by copying: the instance's
 
 ## Where to read next
 
-`ruby/lib/yara/CLAUDE.md` covers the lexer, resolver, vocabularies and shared files; `ruby/lib/yara/parser/CLAUDE.md`, `ruby/lib/yara/typechecker/CLAUDE.md` and `ruby/lib/yara/interpreter/CLAUDE.md` cover the rest, with more implementation detail, gotchas and known gaps than fits here. `docs/syntax.md` documents the language itself, not the implementation.
+`lib/yara/CLAUDE.md` covers the lexer, resolver, vocabularies and shared files; `lib/yara/parser/CLAUDE.md`, `lib/yara/typechecker/CLAUDE.md` and `lib/yara/interpreter/CLAUDE.md` cover the rest, with more implementation detail, gotchas and known gaps than fits here. `docs/syntax.md` documents the language itself, not the implementation.

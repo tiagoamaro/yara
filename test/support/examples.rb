@@ -2,7 +2,7 @@
 # Used by the parity test and by `script/capture_output.rb`, so both
 # pick the same examples and the same vocabulary.
 module Examples
-  ROOT = File.expand_path("../../..", __dir__)
+  ROOT = File.expand_path("../..", __dir__)
 
   # Every example, as a repo-root-relative path.
   #
@@ -29,7 +29,7 @@ module Examples
   # @param example [String] repo-root-relative path
   # @return [String] repo-root-relative path
   def self.stdout_path(example)
-    "tests/stdout/#{example.delete_prefix("examples/").delete_suffix(".yara")}.stdout"
+    "test/stdout/#{example.delete_prefix("examples/").delete_suffix(".yara")}.stdout"
   end
 
   # Expected stderr; only error examples have one.
@@ -39,6 +39,6 @@ module Examples
   def self.stderr_path(example)
     return nil unless example.start_with?("examples/errors/")
 
-    "tests/golden/#{File.basename(example, ".yara")}.stderr"
+    "test/golden/#{File.basename(example, ".yara")}.stderr"
   end
 end

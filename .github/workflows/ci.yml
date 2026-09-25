@@ -11,9 +11,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: ruby
     steps:
       - uses: actions/checkout@v4
       # Reads the Ruby version from the repo-root .tool-versions.
@@ -27,7 +24,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: yara-${{ runner.os }}-${{ runner.arch }}
-          path: ruby/build/yara
+          path: build/yara
 
   mruby-standalone:
     needs: ruby
@@ -39,9 +36,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: yara-Linux-X64
-          path: ruby/build
+          path: build
       - name: Compare every example with the expected output
         run: |
           if command -v ruby; then echo "Ruby is installed; this job must run without it"; exit 1; fi
-          chmod +x ruby/build/yara
-          ruby/script/parity.sh ruby/build/yara
+          chmod +x build/yara
+          script/parity.sh build/yara

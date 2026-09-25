@@ -2,10 +2,10 @@
 # single program, all spelled with the bundled `translations/pt.vocab`.
 #
 # Run with:
-#   ruby/bin/yara run examples/translations/kitchen_sink_pt.yara \
+#   bin/yara run examples/translations/kitchen_sink_pt.yara \
 #     --vocabulary translations/pt.vocab
-# ...or just `make test` in ruby/ — every example under examples/translations/
-# is run with the pt vocabulary automatically.
+# ...or just `make test` — every example under examples/translations/ is
+# run with the pt vocabulary automatically.
 #
 # Two deliberate exceptions to full translation:
 #   - `initializer` is a fixed constructor-method name, not a vocab entry, so

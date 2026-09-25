@@ -1,4 +1,4 @@
-# ruby/lib/yara/parser/
+# lib/yara/parser/
 
 Recursive-descent parser turning tokens into `AST` nodes. `../parser.rb` holds `Parser`, `ParseError` and the token helpers (`peek`, `check`, `advance`, `expect`, `expect_ident`, `parse_type_annotation`, `parse_block`, `parse_comma_separated`); `statements.rb` and `expressions.rb` reopen `Parser`.
 

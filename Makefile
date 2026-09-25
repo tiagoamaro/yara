@@ -1,7 +1,7 @@
 .PHONY: help test parity capture run build parity-mruby
 
 help: ## List the available tasks
-	@awk 'BEGIN { FS = ":.*## " } /^[a-z]+:.*## / { printf "  make %-8s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  make %-13s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 test: ## Run every Ruby test, parity included
 	rake test
@@ -19,4 +19,4 @@ capture: ## Record bin/yara's output as the expected output of every example
 	ruby script/capture_output.rb
 
 run: ## Run a program from the repo root: make run FILE=examples/hello.yara [ARGS="--vocabulary ..."]
-	cd .. && ruby/bin/yara run $(FILE) $(ARGS)
+	bin/yara run $(FILE) $(ARGS)

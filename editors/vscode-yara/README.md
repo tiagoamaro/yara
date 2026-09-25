@@ -1,6 +1,6 @@
 # Yara for VS Code
 
-Syntax highlighting for `.yara` files. A TextMate grammar only — no language server, no diagnostics, no folding, no autocomplete. It colors the source; the compiler (`ruby/bin/yara run <file>` from the repo root) is what actually catches errors, with source-snippet-and-caret rendering (see `ruby/lib/yara/diagnostics.rb`).
+Syntax highlighting for `.yara` files. A TextMate grammar only — no language server, no diagnostics, no folding, no autocomplete. It colors the source; the compiler (`bin/yara run <file>` from the repo root) is what actually catches errors, with source-snippet-and-caret rendering (see `lib/yara/diagnostics.rb`).
 
 ## What's covered
 
@@ -16,7 +16,7 @@ Syntax highlighting for `.yara` files. A TextMate grammar only — no language s
 
 ## What's not covered (known limitations)
 
-TextMate grammars are regex-based pattern matching over text, not a real parser — they don't know Yara's actual grammar the way `ruby/lib/yara/parser/` does. So:
+TextMate grammars are regex-based pattern matching over text, not a real parser — they don't know Yara's actual grammar the way `lib/yara/parser/` does. So:
 - A capitalized identifier used as a type annotation (e.g. `h: Hello`) that isn't one of the built-in type names just highlights as a plain identifier, not a type — regex can't know `Hello` is a user-defined class without cross-referencing every `class` declaration in the file.
 - `.name` after any expression is highlighted the same way whether it's a field read (`h.count`) or a method call (`h.area(2.0)`) — same limitation.
 - No error checking, no go-to-definition, no autocomplete. Those would require an actual language server talking to the compiler, which doesn't exist yet.

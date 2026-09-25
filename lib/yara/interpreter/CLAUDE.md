@@ -1,4 +1,4 @@
-# ruby/lib/yara/interpreter/
+# lib/yara/interpreter/
 
 Tree-walk evaluator over a typechecked program: no bytecode, `eval_expr`/`exec_statement` walk the AST directly. `../interpreter.rb` holds `Instance`, `Pointer`, `RuntimeError`, `Interpreter` (`run_program`, `display`, `flatten_classes`, `with_frame`); `expressions.rb`, `statements.rb`, `calls.rb`, `classes.rb` and `methods.rb` reopen `Interpreter`.
 
