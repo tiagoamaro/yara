@@ -1,8 +1,6 @@
 require "minitest/autorun"
 require_relative "../lib/yara"
 
-# Ported from the tests in `rust/src/typechecker/` (`mod.rs`, `classes.rs`,
-# `methods.rs`).
 class TypeCheckerTest < Minitest::Test
   HELLO_CLASS = "class Hello\n  const PI: Float = 3.14159\n  count: Integer\n\n  def initializer(number: Int)\n    count = number\n  end\nend\n".freeze
   NODE_CLASS = "class Node\n  value: Integer\n\n  def initializer(v: Integer)\n    value = v\n  end\nend\n".freeze

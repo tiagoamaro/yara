@@ -1,7 +1,6 @@
 require "minitest/autorun"
 require_relative "../lib/yara"
 
-# Ported from the tests in `rust/src/diagnostics/mod.rs`.
 class DiagnosticsTest < Minitest::Test
   include Yara::Diagnostics
 

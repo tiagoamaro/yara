@@ -2,7 +2,6 @@ require "minitest/autorun"
 require_relative "../lib/yara"
 require_relative "support/examples"
 
-# Ported from the tests in `rust/src/translations/mod.rs`.
 class TranslationsTest < Minitest::Test
   # File text, and the error message fragment and line it must fail with.
   REJECTED = {

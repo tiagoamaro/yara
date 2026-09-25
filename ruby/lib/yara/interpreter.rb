@@ -1,6 +1,6 @@
 module Yara
   # A class instance: its class name and a field map shared by every binding
-  # of the instance. Equal when the class and every field are, as in Rust.
+  # of the instance. Equal when the class and every field are.
   Instance = Struct.new(:class_name, :fields) do
     # @return [String]
     def to_s
@@ -37,11 +37,10 @@ module Yara
     end
   end
 
-  # Tree-walk evaluator over a typechecked program, mirroring
-  # `rust/src/interpreter/`. Yara values are Ruby values: `Integer`, `Float`,
-  # `true`/`false`, `String`, `nil`, `Array` (shared by reference, like
-  # Rust's `Rc<RefCell<Vec>>`), `Instance` and `Pointer`. Integers stay within
-  # i64: overflow is a runtime error rather than a promotion to Bignum.
+  # Tree-walk evaluator over a typechecked program. Yara values are Ruby values:
+  # `Integer`, `Float`, `true`/`false`, `String`, `nil`, `Array` (shared by
+  # reference), `Instance` and `Pointer`. Integers stay within i64: overflow is
+  # a runtime error rather than a promotion to Bignum.
   class Interpreter
     # A function or method: parameter names and body.
     Function = Struct.new(:params, :body)

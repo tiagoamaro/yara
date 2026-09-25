@@ -61,7 +61,7 @@ module Yara
 
     # Depth-first walk up the parent chain, appending each class to `order`
     # after its ancestors. A cycle is reported at the first of its classes
-    # the walk reached, where Rust picks one by `HashMap` order.
+    # the walk reached.
     #
     # @param name [String]
     # @param parents [Hash{String => String}]

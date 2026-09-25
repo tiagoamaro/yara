@@ -1,8 +1,7 @@
 module Yara
-  # A lexical scope stack shared by the typechecker (binding names to types)
-  # and the interpreter (binding names to values), mirroring `rust/src/env.rs`.
-  # The innermost scope is last and is searched first, so inner declarations
-  # shadow outer ones.
+  # A lexical scope stack shared by the typechecker (binding names to types) and
+  # the interpreter (binding names to values). The innermost scope is last and
+  # is searched first, so inner declarations shadow outer ones.
   class Environment
     def initialize
       @scopes = [{}]

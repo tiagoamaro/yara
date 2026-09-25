@@ -2,8 +2,7 @@ require "minitest/autorun"
 require "stringio"
 require_relative "../lib/yara"
 
-# Ported from the tests in `rust/src/interpreter/` (`mod.rs`, `classes.rs`,
-# `methods.rs`), plus the Ruby-only parity traps listed in `PLAN.md`.
+# Includes the Ruby-specific traps listed in `PLAN.md`.
 class InterpreterTest < Minitest::Test
   # Source, variable, expected value after running.
   VALUES = [

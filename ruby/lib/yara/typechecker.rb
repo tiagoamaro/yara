@@ -1,8 +1,7 @@
 module Yara
   # A static type. `kind` is a primitive name (`Integer`, `Float`, `Boolean`,
   # `String`, `Nil`) or `Array`/`Pointer` (with the element type in `inner`)
-  # or `Instance` (with the class name in `inner`). Mirrors
-  # `rust/src/typechecker/mod.rs`'s `Type`.
+  # or `Instance` (with the class name in `inner`).
   Type = Data.define(:kind, :inner)
 
   class Type
@@ -68,11 +67,10 @@ module Yara
     end
   end
 
-  # Static checking of a resolved program, mirroring `rust/src/typechecker/`.
-  # Expressions live in `typechecker/expressions.rb`, statements in
-  # `typechecker/statements.rb`, free calls and builtins in
-  # `typechecker/calls.rb`, classes in `typechecker/classes.rb`, primitive
-  # methods in `typechecker/methods.rb`.
+  # Static checking of a resolved program. Expressions live in
+  # `typechecker/expressions.rb`, statements in `typechecker/statements.rb`,
+  # free calls and builtins in `typechecker/calls.rb`, classes in
+  # `typechecker/classes.rb`, primitive methods in `typechecker/methods.rb`.
   class TypeChecker
     # A function or method signature; `return_type` is nil when undeclared.
     Signature = Struct.new(:param_types, :return_type)

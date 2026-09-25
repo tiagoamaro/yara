@@ -1,7 +1,7 @@
 module Yara
-  # Rendering shared by every stage's errors, mirroring
-  # `rust/src/diagnostics/mod.rs`: a rustc-style header, the source line, and
-  # a caret under the column, plus one such block per call-stack frame.
+  # Rendering shared by every stage's errors: a rustc-style header, the source
+  # line, and a caret under the column, plus one such block per call-stack
+  # frame.
   module Diagnostics
     # A 1-indexed position. The line is virtual once imports are spliced in;
     # `SourceMap#lookup` recovers the file and local line.

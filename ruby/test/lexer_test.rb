@@ -1,7 +1,6 @@
 require "minitest/autorun"
 require_relative "../lib/yara"
 
-# Ported from the tests in `rust/src/lexer/mod.rs`.
 class LexerTest < Minitest::Test
   def tokens(source, vocabulary = Yara::Vocabulary.english)
     Yara::Lexer.new(source, vocabulary).tokenize

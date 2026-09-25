@@ -1,5 +1,5 @@
 module Yara
-  # The English message catalog, copied from `rust/src/translations/messages.rs`:
+  # The English message catalog:
   # every user-facing diagnostic keyed by a stable `stage/kebab-name`, with
   # positional `{0}`, `{1}`, ... placeholders. A translated vocabulary's
   # `[messages]` section overrides entries; anything it omits falls back here.

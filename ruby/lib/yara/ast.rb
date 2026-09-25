@@ -1,11 +1,10 @@
 module Yara
-  # AST node definitions, mirroring `rust/src/ast/mod.rs`. Pure data: the
-  # parser builds these, the typechecker and interpreter walk them.
+  # AST node definitions. Pure data: the parser builds these, the typechecker
+  # and interpreter walk them.
   #
-  # Every node is a `Struct` whose members follow the Rust field order, ending
-  # in `line, column` (1-indexed position of the construct's first token).
-  # Binary operators are the symbols in `BINARY_OPERATORS`; the only unary
-  # operator is `:neg`.
+  # Every node is a `Struct` whose members end in `line, column` (1-indexed
+  # position of the construct's first token). Binary operators are the symbols
+  # in `BINARY_OPERATORS`; the only unary operator is `:neg`.
   module AST
     BINARY_OPERATORS = [:add, :sub, :mul, :div, :eq, :not_eq, :lt, :gt, :lt_eq, :gt_eq].freeze
 

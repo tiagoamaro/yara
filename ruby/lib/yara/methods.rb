@@ -1,7 +1,6 @@
 module Yara
-  # Methods on primitive receivers, mirroring `rust/src/methods.rs`, keyed by
-  # receiver kind and name. The order matters: it is the order an unknown
-  # method's error lists the available ones in.
+  # Methods on primitive receivers, keyed by receiver kind and name. The order
+  # matters: an unknown method's error lists the available ones in it.
   module Methods
     ARITIES = {
       [:array, "size"] => 0, [:array, "push"] => 1, [:array, "get"] => 1,

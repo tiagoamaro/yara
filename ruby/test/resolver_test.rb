@@ -2,7 +2,6 @@ require "minitest/autorun"
 require "tmpdir"
 require_relative "../lib/yara"
 
-# Ported from the tests in `rust/src/resolver/mod.rs`.
 class ResolverTest < Minitest::Test
   include Yara::AST
 

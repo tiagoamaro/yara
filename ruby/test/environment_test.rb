@@ -1,7 +1,6 @@
 require "minitest/autorun"
 require_relative "../lib/yara"
 
-# Ported from the tests in `rust/src/env.rs`.
 class EnvironmentTest < Minitest::Test
   def test_inner_scope_shadows_then_restores
     env = Yara::Environment.new

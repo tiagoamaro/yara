@@ -8,9 +8,9 @@ module Yara
     end
   end
 
-  # Splices `import "path"` statements, mirroring `rust/src/resolver/mod.rs`:
-  # each import is replaced in place by the imported file's own (recursively
-  # resolved) statements, shifted into that file's virtual line range.
+  # Splices `import "path"` statements: each import is replaced in place by the
+  # imported file's own (recursively resolved) statements, shifted into that
+  # file's virtual line range.
   module Resolver
     # @param program [Array<AST::Node>] the entry file's parsed statements
     # @param current_file [String] the entry file's path, as given on the command line
@@ -30,7 +30,7 @@ module Yara
 
     # Recursive worker behind `resolve_imports`. `visited` holds every
     # canonical path read so far across the whole run, so importing any file
-    # twice is reported as a cycle, the same as Rust.
+    # twice is reported as a cycle.
     #
     # @param program [Array<AST::Node>]
     # @param current_file [String]

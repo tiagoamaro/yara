@@ -4,7 +4,7 @@ module Yara
 
     # Registers every top-level function's signature before any body is
     # checked, so calls may precede definitions or recurse. A return type
-    # error points at the `def`, as in Rust.
+    # error points at the `def`.
     #
     # @param program [Array<AST::Node>]
     # @return [void]

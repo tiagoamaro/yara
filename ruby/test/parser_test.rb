@@ -2,7 +2,6 @@ require "minitest/autorun"
 require_relative "../lib/yara"
 require_relative "support/examples"
 
-# Ported from the tests in `rust/src/parser/mod.rs`.
 class ParserTest < Minitest::Test
   include Yara::AST
 

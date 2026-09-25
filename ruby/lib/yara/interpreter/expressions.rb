@@ -120,7 +120,7 @@ module Yara
       mul: "runtime/cannot-multiply", div: "runtime/cannot-divide"
     }.freeze
 
-    # Integer division truncates toward zero, as in Rust.
+    # Integer division truncates toward zero.
     #
     # @param op [Symbol] `:add`, `:sub`, `:mul` or `:div`
     # @param left [Object]
@@ -143,7 +143,7 @@ module Yara
       end
       return left + right if op == :add && left.is_a?(String) && right.is_a?(String)
 
-      # Rust's subtraction message names the right operand first.
+      # The subtraction message names the right operand first.
       args = op == :sub ? [display(right), display(left)] : [display(left), display(right)]
       runtime_error_msg(ARITHMETIC_ERRORS[op], args, line, column)
     end

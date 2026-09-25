@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs every example through a yara executable and compares stdout, stderr
-# and exit status with the Rust captures, like test/parity_test.rb but with
+# and exit status with the expected output, like test/parity_test.rb but with
 # no Ruby needed, so it can check the mruby build on a bare machine.
 # Usage, from the repo root: ruby/script/parity.sh ruby/build/yara
 set -u

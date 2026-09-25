@@ -1,5 +1,5 @@
 module Yara
-  # Command-line entry point, mirroring `rust/src/main.rs`: only
+  # Command-line entry point: only
   # `yara run <file> [--vocabulary <path>]` is supported, with `--keywords`
   # as an older alias for `--vocabulary`.
   module CLI

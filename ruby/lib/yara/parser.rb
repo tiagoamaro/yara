@@ -6,9 +6,9 @@ module Yara
     end
   end
 
-  # Recursive-descent parser turning tokens into `AST` statements, mirroring
-  # `rust/src/parser/`. Statements live in `parser/statements.rb`, the
-  # expression precedence chain in `parser/expressions.rb`.
+  # Recursive-descent parser turning tokens into `AST` statements. Statements
+  # live in `parser/statements.rb`, the expression precedence chain in
+  # `parser/expressions.rb`.
   class Parser
     # @param tokens [Array<Token>] ending in an `:eof` token
     # @param vocabulary [Vocabulary] type spellings and error messages

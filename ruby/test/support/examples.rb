@@ -1,12 +1,8 @@
 # The shared example fixtures at the repo root, and how each one is run.
-# Used by the parity test and by `script/capture_rust_stdout.rb`, so both
+# Used by the parity test and by `script/capture_output.rb`, so both
 # pick the same examples and the same vocabulary.
 module Examples
   ROOT = File.expand_path("../../..", __dir__)
-
-  # Pipeline stages in order, spelled as the first word pair of a rendered
-  # error (`type error: ...`).
-  STAGES = ["lex error", "parse error", "import error", "type error", "runtime error"].freeze
 
   # Every example, as a repo-root-relative path.
   #
@@ -16,7 +12,7 @@ module Examples
   end
 
   # The `yara run` arguments for an example. Portuguese-vocabulary examples
-  # need `pt.vocab`, the same rule `rust/tests/run_examples.rs` uses.
+  # need `pt.vocab`.
   #
   # @param example [String] repo-root-relative path
   # @return [Array<String>]
@@ -28,7 +24,7 @@ module Examples
     arguments
   end
 
-  # Expected stdout, captured from the Rust binary.
+  # Expected stdout.
   #
   # @param example [String] repo-root-relative path
   # @return [String] repo-root-relative path

@@ -13,9 +13,8 @@ module Yara
     end
   end
 
-  # The vocabulary a run uses: source spellings of keywords, types, builtins
-  # and primitive methods, plus message-catalog overrides. Mirrors
-  # `rust/src/translations/mod.rs`, including its seeding of every name map
+  # The vocabulary a run uses: source spellings of keywords, types, builtins and
+  # primitive methods, plus message-catalog overrides. Every name map starts
   # with English identity entries, which the duplicate-spelling check reads.
   class Vocabulary
     TYPE_NAMES = %w[

@@ -1,5 +1,5 @@
 module Yara
-  # Type-name helpers shared across stages, mirroring `rust/src/types.rs`.
+  # Type-name helpers shared across stages.
   module Types
     ALIASES = { "Int" => "Integer", "Bool" => "Boolean", "Str" => "String" }.freeze
 

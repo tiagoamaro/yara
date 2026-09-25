@@ -1,7 +1,6 @@
 require "minitest/autorun"
 require_relative "../lib/yara"
 
-# Ported from the tests in `rust/src/translations/messages.rs` and `rust/src/types.rs`.
 class MessagesTest < Minitest::Test
   def test_substitutes_positional_placeholders
     assert_equal "expected `)`, found `if`", Yara::Messages.substitute("expected {0}, found {1}", ["`)`", "`if`"])

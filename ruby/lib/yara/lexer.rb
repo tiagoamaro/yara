@@ -10,9 +10,9 @@ module Yara
     end
   end
 
-  # Tokenizer, mirroring `rust/src/lexer/mod.rs`. Walks the source one
-  # character at a time (no `Regexp`, which mruby lacks), tracking the
-  # 1-indexed line and column of each token's first character.
+  # Tokenizer. Walks the source one character at a time (no `Regexp`, which
+  # mruby lacks), tracking the 1-indexed line and column of each token's first
+  # character.
   class Lexer
     # English source spelling of every reserved word to its keyword token.
     # `true`/`false` are keywords that lex to `:bool` tokens.
