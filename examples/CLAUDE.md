@@ -3,7 +3,7 @@
 Sample `.yara` programs, used to exercise the language as each compiler stage lands.
 
 ## Status
-All examples run end-to-end via `bin/yara run examples/<file>.yara` (verified 2026-07-18, including `kitchen_sink.yara`).
+All examples run end-to-end via `bin/yara run examples/<file>.yara`; `test/parity_test.rb` checks every one's output against `test/stdout/` and `test/golden/`.
 
 ## Files
 - `hello.yara` — smallest possible program.

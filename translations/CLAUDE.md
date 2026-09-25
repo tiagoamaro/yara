@@ -10,4 +10,4 @@ Bundled vocabulary-translation files, consumed by `yara run <file> --vocabulary 
 
 ## Gotchas
 - This is not a directory of every language — just the one bundled example proving the mechanism round-trips across all five sections. Adding a new language means adding a new `<lang>.vocab` file here (format documented in `lib/yara/CLAUDE.md`) and, ideally, a matching example under `examples/translations/`.
-- `full_bundled_portuguese_file_parses`-style tests read `pt.vocab` off disk via `CARGO_MANIFEST_DIR` — if this file moves or is renamed, those tests need updating too.
+- `test/translations_test.rb` and `test/support/examples.rb` read `pt.vocab` by path — if this file moves or is renamed, update them too.
