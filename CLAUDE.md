@@ -1,43 +1,36 @@
 # Yara — Project Map
 
-Yara: learning-focused, strongly typed, compiled language. Ruby+Pascal hybrid syntax. Rust compiler/interpreter in `rust/`, being rewritten in Ruby in `ruby/` (Phase 6).
+Yara: learning-focused, strongly typed language. Ruby+Pascal hybrid syntax. Implemented in Ruby in `ruby/`, run under CRuby (`ruby/bin/yara`) or as a standalone mruby executable (`ruby/build/yara`).
 
-**Agents: when you modify a folder below, update that folder's CLAUDE.md before finishing your turn.** This includes every mermaid diagram touched by the change — `docs/architecture.md` and the `///` flowcharts in stage modules (e.g. `rust/src/lexer/mod.rs`) — not just prose. CLAUDE.md files and diagrams are living documentation, kept current as an ongoing part of this project's progress, not a one-off pass.
+**Agents: when you modify a folder below, update that folder's CLAUDE.md before finishing your turn.** This includes every mermaid diagram touched by the change in `docs/architecture.md`, not just prose. CLAUDE.md files and diagrams are living documentation, kept current as an ongoing part of this project's progress, not a one-off pass.
 
 ## Layout
 
-- `rust/`: the Rust crate (`Cargo.toml`, `src/`, `tests/`). Run `cargo` commands from here. Paths in docs under `rust/` are relative to `rust/`, except `examples/`, `translations/`, `tests/golden/` and `docs/`, which always mean the shared fixtures at the repo root.
-- `ruby/`: the Ruby implementation (see `ruby/CLAUDE.md`).
-- Shared by both implementations, at the repo root: `examples/`, `translations/`, `tests/golden/` (expected stderr per error example, with root-relative paths; Rust's golden test rejects any other file there), `tests/stdout/` (expected stdout per example, captured from the Rust binary by `ruby/script/capture_rust_stdout.rb`), `docs/`, `editors/`.
+- `ruby/`: the implementation (see `ruby/CLAUDE.md`, `ruby/README.md`). Run `make`/`rake` commands from there.
+- Shared fixtures at the repo root: `examples/` (the Yara programs), `translations/` (vocabulary files), `tests/stdout/` (expected stdout per example), `tests/golden/` (expected stderr per error example, with root-relative paths), `docs/`, `editors/`.
 
-Pipeline order: `lexer` → `parser` → `resolver` → `typechecker` → `interpreter`.
-Each has its own `CLAUDE.md`; so do `rust/src/ast/`, `rust/src/diagnostics/`, `rust/src/translations/`,
-`rust/src/` (the flat `env.rs`/`types.rs`/`builtins.rs`/`lib.rs`/`main.rs`), `translations/`,
-`examples/`, and `editors/vscode-yara/`. Read the folder's file before working in it.
+Pipeline order: `lexer` → `parser` → `resolver` → `typechecker` → `interpreter`. Stage notes live in `ruby/lib/yara/CLAUDE.md` (lexer, resolver, vocabularies, shared files) and in `ruby/lib/yara/parser/`, `typechecker/` and `interpreter/`; so do `translations/`, `examples/` and `editors/vscode-yara/`. Read the folder's file before working in it.
 
 Non-obvious bits that aren't in a folder doc:
 
-- `rust/tests/`: end-to-end integration tests over every bundled example; they `chdir` to the repo root so fixture paths match the goldens. Contract: non-error examples must run clean, and each `examples/errors/*` must fail at its *expected stage*. Only possible because the crate is both `[lib]` and `[[bin]]`.
-- `docs/architecture.md` — walkthrough of each stage's internal control flow. Every function in `rust/src/` also carries a `///` doc comment explaining its mechanics — keep both in sync when changing a stage's *algorithm*, not just its behavior.
-- `docs/syntax.md` — grammar notes, updated as syntax stabilizes.
-- `docs/plan-next-milestones.md` — remaining phases and their order; its Progress section at the top is the live status of this project.
-- `editors/vscode-yara/` — not part of the Rust build, so nothing fails if it drifts: keep its keyword/type lists in sync with `rust/src/lexer/mod.rs` by hand.
+- `ruby/test/parity_test.rb` runs every example from the repo root and compares stdout, stderr and exit status with `tests/stdout/` and `tests/golden/`. Contract: non-error examples run clean, and each `examples/errors/*` fails with its golden output. After adding an example, `make capture` in `ruby/` records its expected output; review it before committing.
+- `docs/architecture.md`: walkthrough of each stage's control flow with diagrams. Every method in `ruby/lib/yara/` carries a YARD comment; keep both in sync when changing a stage's algorithm, not just its behavior.
+- `docs/syntax.md`: grammar notes, updated as syntax stabilizes.
+- `docs/plan-next-milestones.md`: remaining work and its order; its Progress section at the top is the live status of this project.
+- `editors/vscode-yara/`: not part of the build, so nothing fails if it drifts: keep its keyword/type lists in sync with `ruby/lib/yara/lexer.rb` by hand.
 
 ## Conventions
 
-- Source file and module names are spelled-out full words (`statements.rs`, `expressions.rs`), never abbreviations — explicitness over brevity, this is a teaching codebase.
-- Every token/AST node carries `(line, column)` position — required for diagnostics, not optional. After `import` resolution, AST line numbers are shifted into disjoint virtual ranges per imported file (via `Stmt::shift_lines`/`Expr::shift_lines`), then mapped back to their original file + line during rendering via `diagnostics::SourceMap`.
-- Errors (lexer/parser/resolver/typechecker/runtime/translation) must report exact line:column with a source excerpt + caret, rustc-style. Each stage keeps its own error type (locality) but implements `diagnostics::Diagnostic`; rendering is centralized in `diagnostics::render` (invoked by `main.rs`'s `stage` helper), not in the individual stages — they still only carry line/column + message (runtime additionally carries a call-stack trace).
-- Type aliases are interchangeable and normalized at lex/parse time: `Int`=`Integer`, `Bool`=`Boolean`, `Str`=`String`.
+- Source file names are spelled-out full words (`statements.rb`, `expressions.rb`), never abbreviations: explicitness over brevity, this is a teaching codebase.
+- Every token and AST node carries `(line, column)`, required for diagnostics. After `import` resolution, line numbers are shifted into disjoint virtual ranges per imported file (`Node#shift_lines`), then mapped back to their file and line when rendering (`Diagnostics::SourceMap`).
+- Errors (lexer/parser/resolver/typechecker/runtime/vocabulary) report exact line:column with a source excerpt and caret, rustc-style. Each stage keeps its own error class (subclassing `Diagnostics::Error`); rendering is centralized in `Diagnostics.render`/`render_with_map`, called from `cli.rb`.
+- Type aliases are interchangeable and normalized at parse time: `Int`=`Integer`, `Bool`=`Boolean`, `Str`=`String`.
 - No implicit numeric coercion (Int vs Float stays strict).
-- Rust version pinned via `.tool-versions` (asdf).
-- Always run `cargo fmt` (from `rust/`) before finishing a Rust change; code must pass `cargo fmt --check`.
-- Cover new logic with unit tests wherever feasible (colocated `#[cfg(test)] mod tests` per module); run `cargo test` (from `rust/`) and confirm green before finishing a change.
+- Ruby version pinned via `.tool-versions` (asdf). The code must also compile with mruby: only the Ruby subset listed in `ruby/PLAN.md`, and no `require` outside `ruby/lib/yara.rb`.
+- Cover new logic with minitest tests in `ruby/test/`; run `make test` (from `ruby/`) and confirm green before finishing a change. For changes that could behave differently under mruby, also run `make parity-mruby`.
 
 ## TODO
 
-- Native codegen (LLVM/Cranelift or C transpile) — deferred, not started.
-- **Teaching GC (Phase 3b)**: `collect()` mark-and-sweep builtin landed (roots from every environment scope, chased through arrays/instances/pointee slots, returns freed count; see `rust/src/interpreter/CLAUDE.md`); side-by-side manual-vs-GC examples in `examples/pointers/gc.yara`.
-- **Full-vocabulary translation**: done. Extends the old keyword-only translation system to *all* user-facing terms via a `Vocabulary` struct (`rust/src/translations/mod.rs`) parsed from a sectioned `[keywords]/[types]/[builtins]/[methods]/[messages]` file format; `Rc<Vocabulary>` is threaded through `Lexer`/`Parser`/`Resolver`/`TypeChecker`/`Interpreter` (`with_vocabulary` constructors alongside the older English-only ones). CLI flag is `--vocabulary <path>` (`--keywords <path>` kept working as a backward-compat alias). `translations/pt.vocab` is the bundled Portuguese reference, covering all 5 sections; `examples/translations/hello_pt.yara` is written in fully-Portuguese vocabulary (keywords, types, builtins/methods, `.new`/`.novo`), and `examples/errors/runtime_error_pt.yara` demonstrates a Portuguese-language runtime error message. The `[messages]` catalog (`rust/src/translations/messages.rs`, 128 keys) routes every `format!`-built error message in lexer/parser/resolver/typechecker/interpreter through `Vocabulary::msg`, plus the post-import stage labels and call-stack `in`/`at` words; a handful of fixed-string messages and the lex/parse-stage labels are still hardcoded English (listed in `rust/src/translations/CLAUDE.md`), and untranslated keys fall back to English by design. `translations/pt.vocab`'s `[messages]` section translates only 4 keys. More PT examples: `examples/translations/kitchen_sink_pt.yara` and `fatorial_pt.yara`. Docs updated: `docs/syntax.md` Translation section, `docs/architecture.md` pipeline diagrams. Out of scope, not started: translating identifiers/string contents (never translatable by design), and full coverage of every remaining `format!`-built message.
-- **Everything-is-an-object (Ruby-style)**: done (Phase 4 complete, 2026-07-25). Primitive methods on Array/String/Integer/Float/Boolean/Pointer via `Expr::MethodCall` reusing the existing instance-method-call AST path; `rust/src/methods.rs` registry keys entries by `(ReceiverKind, name)` and mirrors `rust/src/builtins.rs` structure (arity, typecheck/eval function pointers per method); parens always required (`.size()` not `.size` — paren-less stays `Expr::FieldAccess`, untouched). 25 methods total: Array 6 (`size`/`push`/`get`/`set`/`pop`/`is_empty`), String 8 (`size`/`upper`/`lower`/`trim`/`is_empty`/`to_i`/`to_f`/`to_s`), Integer 3 (`to_s`/`to_f`/`abs`), Float 3 (`to_s`/`to_i`/`abs`), Boolean 1 (`to_s`), Pointer 3 (`deref`/`set_deref`/`free`), plus shared conversion methods (`to_s`/`to_i`/`to_f`). Free-function builtins kept unchanged and side-by-side (`len(xs)` and `xs.size()` both work). See `rust/src/methods.rs`, `rust/src/typechecker/methods.rs`, `rust/src/interpreter/methods.rs`, `examples/methods.yara`. Out of scope: user-defined methods on primitives, class-level/static methods, method overloading on arity.
-- **Class inheritance**: done (single parent, `class Child < Parent`, fields+methods inherit via flattening, no `super`, no override keyword — see `docs/syntax.md` Inheritance section, `rust/src/typechecker/CLAUDE.md`, `rust/src/interpreter/CLAUDE.md`). Class-level/static methods/fields (beyond the special `.new`), visibility modifiers, `super`, multiple inheritance — still deliberately out of scope; not started.
+- Native codegen (LLVM/Cranelift or C transpile): deferred, not started.
+- Message-catalog leftovers: a few fixed-string messages are still hardcoded English (listed in `ruby/lib/yara/CLAUDE.md`), lex/parse-stage labels aren't localized, and `translations/pt.vocab`'s `[messages]` translates only 4 keys.
+- Out of scope, not started: translating identifiers or string contents (never translatable by design); user-defined methods on primitives; class-level/static methods beyond `.new`; visibility modifiers; `super`; multiple inheritance; method overloading on arity.

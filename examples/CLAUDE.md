@@ -3,7 +3,7 @@
 Sample `.yara` programs, used to exercise the language as each compiler stage lands.
 
 ## Status
-All examples run end-to-end via `cargo run --manifest-path rust/Cargo.toml -- run examples/<file>.yara` (verified 2026-07-18, including `kitchen_sink.yara`).
+All examples run end-to-end via `ruby/bin/yara run examples/<file>.yara` (verified 2026-07-18, including `kitchen_sink.yara`).
 
 ## Files
 - `hello.yara` — smallest possible program.
@@ -14,7 +14,7 @@ All examples run end-to-end via `cargo run --manifest-path rust/Cargo.toml -- ru
 - `recursion.yara` — `factorial`, exercising a function calling itself and `if`/`else` as tail return.
 - `constants.yara` — `const` decls and a function reading an outer const.
 - `methods.yara` — primitive method calls on every receiver type: arrays (`size()`, `push()`, `get()`, `set()`, `pop()`, `is_empty()`), strings (`size()`, `upper()`, `lower()`, `trim()`, `is_empty()`, `to_i()`, `to_f()`, `to_s()`), integers (`to_s()`, `to_f()`, `abs()`), floats (`to_s()`, `to_i()`, `abs()`), booleans (`to_s()`), and pointers (`deref()`, `set_deref()`, `free()`); demonstrates the "everything is an object" surface where every basic value has methods.
-- `kitchen_sink.yara` — imports every other example file (`import "name"`, no `.yara` extension needed) to exercise the whole language in one run; demonstrates the `resolver` (see `rust/src/resolver/CLAUDE.md`). Does not currently import `data_structures/*` (kept separate since those are more involved demos, not quick language-feature smoke tests). Imports `pointers/basic`, `pointers/leak`, `pointers/linked_list`; skips the `collect()` examples (`gc`, `free_then_collect`) because imports splice into one program over one shared heap, so they'd reclaim each other's garbage and print different counts than standalone. Only one of `pointers/linked_list` and `pointers/circular_list` can be imported anyway — both declare `class Node`.
+- `kitchen_sink.yara` — imports every other example file (`import "name"`, no `.yara` extension needed) to exercise the whole language in one run; demonstrates the `resolver` (see `ruby/lib/yara/CLAUDE.md`). Does not currently import `data_structures/*` (kept separate since those are more involved demos, not quick language-feature smoke tests). Imports `pointers/basic`, `pointers/leak`, `pointers/linked_list`; skips the `collect()` examples (`gc`, `free_then_collect`) because imports splice into one program over one shared heap, so they'd reclaim each other's garbage and print different counts than standalone. Only one of `pointers/linked_list` and `pointers/circular_list` can be imported anyway — both declare `class Node`.
 - `data_structures/` — array-backed data structure demos (`list`, `stack`, `queue`, `linked_list`, `binary_tree`, `graph`); see its own `CLAUDE.md`.
 - `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace; see its own `CLAUDE.md`.
 - `objects/` — `class` declarations: const/instance-var/initializer/method, `.new` construction, field read/write, single-parent inheritance (`class Child < Parent`); see its own `CLAUDE.md`.

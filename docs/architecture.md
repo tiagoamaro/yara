@@ -1,23 +1,21 @@
 # Yara Architecture
 
-How Yara actually turns a `.yara` file into running output, traced through the real functions in this repo. Written for anyone studying "how do you build a programming language" — every box below names a real type or function, not an idealized textbook stage.
+How Yara turns a `.yara` file into running output, traced through the real code in `ruby/lib/yara/`. Written for anyone studying how a programming language is built: every box below names a real class or method, not an idealized textbook stage.
 
 ## The pipeline
 
-`main.rs::run_file` is the whole story in one function: read the file, then feed it through five stages in sequence, stopping at the first one that returns an error. (`main.rs` is a thin CLI binary over the `yara` **library crate** — `rust/src/lib.rs` — where every stage actually lives; that split is what lets the pipeline be driven from the end-to-end `tests/`.)
-
-The diagram below shows the plain English-vocabulary path (`Lexer::new`/`Parser::new`/`TypeChecker::new`/`Interpreter::new`). When `--vocabulary <path>` is passed, `run_file` parses it into a `Vocabulary` (`translations::parse_vocabulary`, see `rust/src/translations/CLAUDE.md`) and every stage is constructed via its `with_vocabulary(..., vocab.clone())` variant instead — same pipeline shape, just threading one shared `Rc<Vocabulary>` through so keyword/type/builtin/method spellings and error-message prose all come from the same source.
+`CLI.run_file` (`cli.rb`) is the whole story in one method: read the file, load the vocabulary (English unless `--vocabulary` names a file), then feed the source through five stages in order, stopping at the first error. Every stage receives the same `Vocabulary`, so keyword, type, builtin and method spellings and error prose all come from one place.
 
 ```mermaid
 flowchart TD
-    A["source: String\n(std::fs::read_to_string)"] --> B["Lexer::new(&source).tokenize()\nsrc/lexer/mod.rs"]
-    B -->|"Vec&lt;Token&gt;"| C["Parser::new(tokens).parse_program()\nsrc/parser/mod.rs"]
-    C -->|"Vec&lt;Stmt&gt; (AST)"| D["resolver::resolve_imports(program, path)\nsrc/resolver/mod.rs"]
-    D -->|"Vec&lt;Stmt&gt;\n(imports spliced in)"| E["TypeChecker::new().check_program(&program)\nsrc/typechecker/mod.rs"]
-    E -->|"Ok(())"| F["Interpreter::new().run_program(&program)\nsrc/interpreter/mod.rs"]
+    A["source text\n(File.read)"] --> B["Lexer.new(source, vocabulary).tokenize\nlexer.rb"]
+    B -->|"Array of Token"| C["Parser.new(tokens, vocabulary).parse_program\nparser.rb, parser/"]
+    C -->|"Array of AST nodes"| D["Resolver.resolve_imports(program, path, map, vocabulary)\nresolver.rb"]
+    D -->|"AST nodes\n(imports spliced in)"| E["TypeChecker.new(vocabulary).check_program(program)\ntypechecker.rb, typechecker/"]
+    E -->|"no error"| F["Interpreter.new(vocabulary).run_program(program)\ninterpreter.rb, interpreter/"]
     F --> G["program output\n(via print(...))"]
 
-    B -.->|LexError| X["main.rs stage() ->\ndiagnostics::render\nsrc/diagnostics/mod.rs"]
+    B -.->|LexError| X["Diagnostics.render /\nrender_with_map\ndiagnostics.rb"]
     C -.->|ParseError| X
     D -.->|ResolveError| X
     E -.->|TypeError| X
@@ -25,99 +23,107 @@ flowchart TD
     X --> Z["stderr: rustc-style\nsnippet + caret, exit 1"]
 ```
 
-Every stage's error type (`LexError`, `ParseError`, `ResolveError`, `TypeError`, `RuntimeError`) implements the `diagnostics::Diagnostic` trait (`kind`/`message`/`span`, plus `frames` for `RuntimeError`'s call stack) — which is what lets `diagnostics::render`, invoked by `main.rs`'s one-line `stage` helper, render all five with a single function instead of five bespoke printers. The stages keep their own distinct error types; only the rendering is shared.
+Every stage's error class (`LexError`, `ParseError`, `ResolveError`, `TypeError`, `RuntimeError`) inherits from `Diagnostics::Error`, which carries the message and position; each subclass names its `kind` (`"type error"`), and `RuntimeError` also returns its call-stack `frames`. That shared shape is what lets one renderer print all five. The stages keep their own error classes; only the rendering is shared.
 
-Error positions in imported files are resolved via `diagnostics::SourceMap`: the resolver assigns each imported file a disjoint range of virtual line numbers, shifts the imported AST's positions into that range, and `render_with_map` uses the map to translate a diagnostic's virtual line back to (file, local line, snippet). This ensures errors from imported files render their correct source snippets, not the entry file's.
+Errors in imported files resolve through `Diagnostics::SourceMap`: the resolver gives each imported file a disjoint range of virtual line numbers, shifts the imported AST into that range, and `render_with_map` maps a diagnostic's virtual line back to the file, its local line and its snippet.
 
-Beyond the five pipeline stages, a few small modules are shared across them, each a single source of truth for one concern: `diagnostics` (error rendering, above), `env` (the `Environment<T>` scope stack the typechecker and interpreter both use — over `Type` and `Value` respectively), `types` (type-name alias normalization, `Int`→`Integer`), `builtins` (the array-builtin name+arity registry both stages consult), and `methods` (the primitive-method `(ReceiverKind, name)` registry for postfix method calls on Array/String/Integer/Float/Boolean/Pointer). See `rust/src/CLAUDE.md`.
+Beyond the stages, a few files are shared, each the single source of truth for one concern: `diagnostics.rb` (rendering), `environment.rb` (the scope stack the typechecker fills with types and the interpreter with values), `types.rb` (alias normalization, `Int` to `Integer`), `builtins.rb` and `methods.rb` (the builtin and primitive-method registries), `messages.rb` (the English message catalog) and `rust_format.rb` (number formatting). `ruby/lib/yara/CLAUDE.md` describes each.
+
+The same Ruby files run two ways: under CRuby through `ruby/bin/yara`, and compiled to mruby bytecode inside the standalone `ruby/build/yara` executable (see `ruby/README.md`).
 
 ## Lexer: character to token
 
-`Lexer::tokenize` is a loop: skip whitespace/comments, look at the next character, and dispatch purely on what *kind* of character it is.
+`Lexer#tokenize` is a loop: skip whitespace and comments, look at the next character, and dispatch purely on what kind of character it is.
 
 ```mermaid
 flowchart TD
     Start(["next char?"]) -->|digit| Num["read_number\n(int or float)"]
     Start -->|quote char| Str["read_string\n(escapes: newline, tab, quote, backslash)"]
-    Start -->|letter or '_'| Ident["read_ident_or_keyword\n(keyword table or Ident)"]
-    Start -->|anything else| Op["read_operator\n(1 or 2 char, maximal munch)"]
-    Start -->|none left| Eof["emit TokenKind::Eof"]
-    Num --> Tok["push Token{kind, line, column}"]
+    Start -->|letter or '_'| Ident["read_ident_or_keyword\n(vocabulary keywords or :ident)"]
+    Start -->|anything else| Op["read_operator\n(1 or 2 chars, maximal munch)"]
+    Start -->|none left| Eof["emit :eof token"]
+    Num --> Tok["push Token(kind, value, line, column)"]
     Str --> Tok
     Ident --> Tok
     Op --> Tok
     Tok --> Start
 ```
 
-`peek`/`peek_next`/`advance` are the only primitives that touch the underlying `Vec<char>` and position counters — every sub-lexer (`read_number`, `read_string`, ...) is built purely on top of those three, which is why line/column tracking only has to be correct in one place (`advance`).
+`peek` and `advance` are the only methods that move through the characters, and every reader is built on them, which is why line and column tracking only has to be right in one place (`advance`). There is no `Regexp`: the lexer walks characters by hand, which also keeps it within what mruby supports.
 
-## Parser: precedence climbing + recursive descent
+## Parser: precedence climbing and recursive descent
 
-Statements dispatch on the leading token (`parse_stmt`), same as the lexer dispatches on the leading character. Expressions use **precedence climbing**: each precedence level is a function that first asks the next-tighter level to parse an operand, then loops consuming operators *at its own level*, building a left-associative tree.
+Statements dispatch on the leading token (`parse_statement`), the way the lexer dispatches on the leading character. Expressions use precedence climbing: each level asks the next tighter level for an operand, then loops consuming operators at its own level, building a left-associative tree.
 
 ```mermaid
 flowchart LR
-    E["parse_expr"] --> Cmp["parse_comparison\n== != &lt; &gt; &lt;= &gt;="]
+    E["parse_expression"] --> Cmp["parse_comparison\n== != &lt; &gt; &lt;= &gt;="]
     Cmp --> Add["parse_additive\n+  -"]
     Add --> Mul["parse_multiplicative\n*  /"]
     Mul --> Un["parse_unary\n-x (prefix)"]
-    Un --> Prim["parse_primary\n= parse_primary_base\n  then parse_postfix"]
-    Prim --> Base["parse_primary_base\nliterals, ident, call,\n( expr ), [ array ]"]
-    Prim --> Post["parse_postfix\n[i]  .field  .method(args)\n(loops: chains freely)"]
+    Un --> Post["parse_postfix(parse_primary)"]
+    Post --> Base["parse_primary\nliterals, ident, call,\n( expr ), [ array ]"]
+    Post --> Loop["loops over\n[i]  .field  .method(args)"]
 ```
 
-Loosest-binding (comparison) is outermost, tightest-binding (postfix indexing/field-access/calls) is innermost — so `1 + 2 * 3` parses as `1 + (2 * 3)` for free, without a precedence table, purely from the call order.
+The loosest binding (comparison) is outermost and the tightest (postfix indexing, field access, method calls) innermost, so `1 + 2 * 3` parses as `1 + (2 * 3)` from the call order alone, with no precedence table. The three binary levels share `parse_left_associative`.
 
-`parse_ident_stmt` disambiguates four statement shapes that all start with a bare identifier — `x = expr`, `x: Type = expr`, `obj.field = value`, and a bare expression statement like `foo()` — by parsing a full expression first and then pattern-matching on what shape it turned out to be (`Expr::Ident` -> `Stmt::VarDecl`, `Expr::FieldAccess` -> `Stmt::FieldAssign`, anything else -> `Stmt::ExprStmt`).
+`parse_ident_statement` tells apart the statements that start with a bare identifier: `x: Type = expr` by its colon, and otherwise by parsing a full expression first and then looking at what it turned out to be (`Ident` before `=` is a `VarDecl`, `FieldAccess` a `FieldAssign`, anything else without `=` an expression statement).
 
-Type annotations in declarations are parsed by `parse_type_annotation`, which is **recursive**: it recognizes the `Ptr<T>` prefix and recursively parses the inner type, building a tree for complex types like `Ptr<Ptr<Integer>>`. This is the only place in the grammar that accepts generic-like syntax.
+`parse_type_annotation` is recursive: it recognizes `Ptr` and parses the inner type between `<` and `>`, so `Ptr<Ptr<Integer>>` works. It is the only place in the grammar with generic-looking syntax.
 
-## Typechecker: two collection passes, then check
+## Typechecker: collect first, then check
 
 ```mermaid
 flowchart TD
-    A["check_program(&[Stmt])"] --> B["collect_classes\n(3 passes: register names,\nfill own fields/methods,\nflatten_inheritance)"]
-    B --> C["collect_function_signatures\n(pre-pass so call order\ndoesn't matter)"]
-    C --> D["check_classes\n(type-checks every method body,\nfields pre-declared = implicit self)"]
-    D --> E["check_stmt for every\ntop-level statement"]
-    E --> F{"Ok(()) or\nfirst TypeError"}
+    A["check_program(program)"] --> B["collect_classes\n(register names,\nfill own fields/methods,\nflatten_inheritance)"]
+    B --> C["collect_function_signatures\n(so call order\ndoesn't matter)"]
+    C --> D["check_classes\n(every method body,\nfields pre-declared = implicit self)"]
+    D --> E["check_statement for every\ntop-level statement"]
+    E --> F{"done, or the\nfirst TypeError"}
+    E --> G["check_expr"]
+    G -->|"Call"| H["check_call:\nprint / builtins / user function"]
+    G -->|"MethodCall on a class name"| I["check_construction\n(ClassName.new)"]
+    G -->|"MethodCall on an instance"| J["class method\n(flattened methods)"]
+    G -->|"MethodCall on a primitive"| K["check_primitive_method\n(typechecker/methods.rb)"]
 ```
 
-The two-pass class collection matters for a subtle reason: a class's field/param/return annotations might name *another* class (or itself), so every class name has to exist in `self.classes` before any class's fields are actually type-resolved — otherwise declaration order would matter, which would be surprising.
+Class collection comes first for a reason: a class's field, parameter and return annotations can name another class, or itself, so every class name must be registered before any annotation is resolved. Otherwise declaration order would matter.
 
-**Inheritance (`class Child < Parent`)** adds a third pass, `flatten_inheritance`, after the own-fields/own-methods pass: it builds a `child -> parent` map from each `ClassDef.parent`, rejects unknown parents and inheritance cycles (`A < B < A`) as typecheck errors, then walks classes in parent-first topological order merging each parent's already-flattened `fields`/`methods` into the child's own maps — child entries win on a name clash (implicit override, no keyword). Because this happens before `check_classes`, every downstream check (`check_field_access`, `check_method_call`, `check_fields_assigned_in_initializer`) sees a fully flattened `ClassInfo` and needs no inheritance-specific logic — the one exception is that `check_fields_assigned_in_initializer` now walks the parent chain to find each inherited field's original declaration span (for the error message), since there's no `super` to assign them implicitly. The interpreter mirrors this exact scheme on its own `ClassDecl` table (`const_inits`/`field_names`/`methods`) in `run_program`'s registration pass, so `construct`/`call_method`/`run_method` are equally untouched.
+**Inheritance** (`class Child < Parent`) adds `flatten_inheritance` after each class's own members are collected: it rejects unknown parents and cycles, then walks classes parents first, merging each parent's already flattened fields and methods into the child, with the child's own members winning. Everything after it sees complete classes and needs no inheritance logic, except `check_fields_assigned`, which walks the parent chain so a child's `initializer` must assign inherited fields too (there is no `super`). The interpreter flattens its own class table the same way.
 
-**Primitive method dispatch** (`Expr::MethodCall` on non-instance receivers): `check_method_call` in `typechecker/classes.rs` first evaluates the receiver expression to a `Type`; if the result is not `Type::Instance`, it checks whether it has a primitive-method receiver kind via `methods::ReceiverKind::of_type`. If yes, it delegates to `typechecker/methods.rs::check_primitive_method`, which looks up the method in `rust/src/methods.rs::lookup`, validates arity, and dispatches via function pointer to the method's `MethodCheckFn`. If no receiver kind and not an instance, method calls error (e.g., `nil.foo()`). Instance methods (`Type::Instance`) go through the existing class method table path as before.
+**Primitive methods** (`xs.size()`, `2.to_s()`): `check_method_call` checks the receiver first. An instance goes to its class's methods. Any other type with a receiver kind (`Type#receiver_kind`) goes to `check_primitive_method`, which looks the method up in `methods.rb`, checks arity and returns the result type. `nil.foo()` has no receiver kind and is an error.
 
-`check_body_return_type`/`check_tail_stmt` implement Ruby-style implicit last-expression return, including the trickiest part: a trailing `if`/`elsif`/`else` is itself a tail expression, so `factorial`'s whole body (an `if`/`else` with no statement after it) can be its return value — each branch's own tail type is computed recursively and all branches present must agree.
+`check_body_return_type` and `check_tail` implement Ruby-style implicit return, including the tricky part: a trailing `if`/`elsif`/`else` is itself a tail expression, so a whole `factorial` body that is one `if`/`else` can be its return value. Each branch's tail type is computed recursively and all branches must agree.
 
-Pointer types (`Type::Pointer`) are built by recursively resolving the inner type from the `Ptr<T>` annotation syntax. The typechecker verifies that `alloc`, `deref`, `set_deref`, and `free` receive the correct argument types and return types — e.g., `deref(p: Ptr<T>)` type-checks only if `p` is indeed a pointer, and returns type `T`.
+Pointer types come from resolving `Ptr<T>` annotations recursively. `alloc`, `deref`, `set_deref` and `free` are checked like any builtin: `deref(p)` type-checks only if `p` is a pointer, and has the pointee's type.
 
-## Interpreter: tree-walking, no bytecode
+## Interpreter: tree walking, no bytecode
 
-There's no compilation to bytecode or machine code — `Interpreter::eval_expr`/`exec_stmt` walk the same `Stmt`/`Expr` tree the parser built, directly executing it. Method dispatch on primitives mirrors the typechecker: `Expr::MethodCall` in `interpreter/classes.rs::call_method` first evaluates the receiver; if it's not `Value::Instance`, it checks for a primitive-method receiver kind via `methods::ReceiverKind::of_value`. If found, it dispatches to `interpreter/methods.rs::eval_primitive_method`, which looks up the method in `rust/src/methods.rs::lookup`, and delegates via function pointer to the method's `MethodEvalFn`. Instance methods (`Value::Instance`) use the existing class method table path as before.
+There is no compilation step: `eval_expr` and `exec_statement` walk the same AST the parser built. Method calls mirror the typechecker: `call_method` evaluates the receiver; an `Instance` uses its class's methods, and any other value with a receiver kind goes to `eval_primitive_method`.
 
 ```mermaid
 flowchart TD
-    Call["call_function(callee, args)"] --> Push["push StackFrame\n(for RuntimeError traces)"]
-    Push --> Scope["push_scope + bind params"]
-    Scope --> Body["exec_function_body\n(= exec_tail_stmt on the\nlast statement)"]
-    Body --> Tail{"last stmt is\nif/elsif/else?"}
-    Tail -->|yes| Recurse["pick branch,\nrecurse into exec_function_body"]
-    Tail -->|no| Direct["eval_expr / exec_stmt\n(explicit return short-circuits\nvia the Flow enum)"]
+    Call["call_function(callee, args)"] --> Push["with_frame: push a Frame\n(for RuntimeError traces)\nand a scope, bind params"]
+    Push --> Body["exec_function_body\n(the last statement is\nthe return value)"]
+    Body --> Tail{"last statement is\nif/elsif/else?"}
+    Tail -->|yes| Recurse["pick the branch,\nrecurse into exec_function_body"]
+    Tail -->|no| Direct["eval_expr / exec_statement\n(an explicit return comes back\nas a Return value)"]
     Recurse --> Pop
-    Direct --> Pop["pop_scope + pop StackFrame"]
-    Pop --> Result["Value"]
+    Direct --> Pop["pop the scope and the frame\n(also when an error propagates)"]
+    Pop --> Result["value"]
 ```
 
-Arrays (`Value::Array`) and class instances (`Value::Instance`) both use `Rc<RefCell<..>>` for reference semantics — cloning the `Value` (e.g. passing it as a function argument) shares the same backing storage, so a called function's `push`/`set`/field-assignment is visible to the caller. This is what makes the arena-style data structures in `examples/data_structures/` work without a real pointer type, and what makes `h.count = 10` after `Hello.new(...)` actually mutate the instance.
+Arrays and instances are Ruby objects shared by reference, so passing one to a function shares it: a called function's `push`, `set` or field assignment is visible to the caller. That is what makes the arena-style data structures in `examples/data_structures/` work, and what makes `h.count = 10` after `Hello.new(...)` change the instance.
 
-Class method calls (`run_method`) use a copy-in/copy-out trick for implicit `self`: the instance's current field values are copied into the method's own scope before the body runs (so a bare `count` reads/writes like any local variable), then the same keys are copied back into the instance's shared field map afterward.
+Method calls (`run_method`) implement implicit `self` by copying: the instance's fields are copied into the method's scope before the body runs, so a bare `count` reads and writes like a local, and the same names are copied back into the instance afterwards.
 
-**Heap and pointer semantics:** The interpreter maintains a heap (`Vec<Option<Value>>`) where each index is a potential storage slot. `alloc(v)` finds an unused slot, writes `Some(v)` into it, and returns `Value::Pointer(index)` — a handle to that slot. `deref(p)` reads the slot; if it contains `None` (previously freed), a `RuntimeError("use after free")` is raised. `set_deref(p, v)` writes to the slot, with the same freed-slot check. `free(p)` writes `None` to the slot; calling `free` twice on the same pointer raises `RuntimeError("double free")`. Slots are never reused after being freed — each allocation claims an ever-increasing index — making use-after-free and double-free mistakes visible and diagnosable, the pedagogical point for teaching manual memory management.
+**Heap and pointers:** the interpreter keeps a heap, an array of slots. `alloc(v)` appends a slot holding `v` and returns a `Pointer` to its index. `deref(p)` reads the slot and `set_deref(p, v)` writes it; either raises "use after free" if the slot was freed. `free(p)` empties the slot, and freeing it again raises "double free". Slots are never reused, so these mistakes are always visible and diagnosable, which is the point of teaching manual memory management this way.
 
-**Mark-and-sweep garbage collection:** The `collect()` builtin (arity 0, returns `Integer`) runs a mark-and-sweep pass over the same heap. Mark: every binding in every live scope is a root (`Environment::iter_values`); marking chases pointers recursively through array elements, instance fields, and pointee heap slots, with Rc-identity guards stopping cyclic traversals. Sweep: unmarked still-allocated slots are set to `None` exactly as `free` would; the count of freed slots is returned. This teaches the second memory-management model (automatic collection) alongside manual deallocation, with `examples/pointers/gc.yara` demonstrating both side by side.
+**Mark and sweep:** `collect()` runs a garbage collector over the same heap. Mark: every value bound in every live scope is a root, and marking follows pointers through array elements, instance fields and pointee slots, with an identity set so cycles end. Sweep: every allocated slot left unmarked is emptied, exactly as `free` would, and the count is returned. `examples/pointers/gc.yara` shows both memory models side by side.
+
+**Numbers:** integers stay within 64 bits (overflow is a runtime error) and `/` truncates toward zero. Floats print through `RustFormat`, which also parses float literals; both directions use exact integer arithmetic, so the output is the same under CRuby and mruby.
 
 ## Where to read next
 
-Each stage's own `CLAUDE.md` (`rust/src/lexer/CLAUDE.md`, `rust/src/ast/CLAUDE.md`, `rust/src/parser/CLAUDE.md`, `rust/src/typechecker/CLAUDE.md`, `rust/src/interpreter/CLAUDE.md`, `rust/src/resolver/CLAUDE.md`, `rust/src/diagnostics/CLAUDE.md`) has more implementation-level detail, gotchas, and known gaps than fits here; `rust/src/CLAUDE.md` covers the flat support files (`lib.rs`, `main.rs`, `env.rs`, `types.rs`, `builtins.rs`). `docs/syntax.md` documents the language grammar itself, not the implementation.
+`ruby/lib/yara/CLAUDE.md` covers the lexer, resolver, vocabularies and shared files; `ruby/lib/yara/parser/CLAUDE.md`, `ruby/lib/yara/typechecker/CLAUDE.md` and `ruby/lib/yara/interpreter/CLAUDE.md` cover the rest, with more implementation detail, gotchas and known gaps than fits here. `docs/syntax.md` documents the language itself, not the implementation.

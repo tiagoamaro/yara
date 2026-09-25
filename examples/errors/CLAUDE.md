@@ -1,6 +1,6 @@
 # examples/errors/
 
-Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `cargo run --manifest-path rust/Cargo.toml -- run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `rust/src/diagnostics/`, not in any compiler stage — `main.rs` only invokes it.
+Every file here is *meant* to fail — they demonstrate what Yara's error output looks like at each pipeline stage (lex, parse, typecheck, runtime), per the root `CLAUDE.md` convention that every error is traceable to an exact line:column with a source excerpt and caret. Run any of them with `ruby/bin/yara run examples/errors/<file>.yara`; each exits with status 1. Rendering itself (`render`/`render_with_map`/`render_snippet`) lives in `ruby/lib/yara/diagnostics.rb`, not in any compiler stage; `cli.rb` only invokes it.
 
 ## Status
 All nineteen verified against the actual binary (2026-07-25); output below is real, not illustrative.
@@ -101,7 +101,7 @@ All nineteen verified against the actual binary (2026-07-25); output below is re
   1 | def bad(): Integer
     | ^
   ```
-- `import_type_error_helper.yara` — the imported helper: `bad()` is declared `Integer` but returns a `String`. Fails at typecheck on its own too, which is why it has its own `Type` expected-stage entry in `rust/tests/run_examples.rs`.
+- `import_type_error_helper.yara` — the imported helper: `bad()` is declared `Integer` but returns a `String`. Fails at typecheck on its own too, so it has its own golden, `tests/golden/import_type_error_helper.stderr`.
 - `class_unassigned_field.yara` — a `Counter` class has an instance-var `count: Integer` but the class has no `initializer`, and a `bump()` method that assigns to `count`. The typechecker rejects this at the field's declaration — every instance-var must be assigned in `initializer`:
   ```
   type error: field `count` of class `Counter` is never assigned in `initializer` (it would be `Nil` at runtime, not `Integer`)
@@ -142,7 +142,7 @@ All nineteen verified against the actual binary (2026-07-25); output below is re
   4 | print(deref(p))
     |       ^
   ```
-- `method_unknown_on_primitive.yara` — calling a nonexistent method on a primitive type (typecheck-time, via `lookup` in `rust/src/methods.rs`):
+- `method_unknown_on_primitive.yara` — calling a nonexistent method on a primitive type (typecheck-time, via `lookup` in `ruby/lib/yara/methods.rb`):
   ```
   type error: `Integer` has no method `nope` (available: to_s, to_f, abs)
     --> examples/errors/method_unknown_on_primitive.yara:3:2
@@ -167,10 +167,10 @@ All nineteen verified against the actual binary (2026-07-25); output below is re
   5 | escreva(1 / n)
     |           ^
   ```
-  Only the message body (`divisao por zero`) is localized — the `runtime error:` stage label itself isn't part of the `[messages]` catalog. Run *without* `--vocabulary` and it fails earlier, at typecheck, with `unknown type \`Inteiro\`` (an all-English pipeline doesn't know `Inteiro` is a translated `Integer`) — that's the golden captured in `tests/golden/runtime_error_pt.stderr`'s sibling test setup (`rust/tests/error_output.rs` special-cases this one file to render with the Portuguese `Vocabulary`, matching `rust/tests/run_examples.rs`'s `Stage::Runtime` expectation).
+  Only the message body (`divisao por zero`) is localized — the `runtime error:` stage label itself isn't part of the `[messages]` catalog. Run *without* `--vocabulary` and it fails earlier, at typecheck, with `unknown type \`Inteiro\`` (an all-English pipeline doesn't know `Inteiro` is a translated `Integer`) — which is why `ruby/test/support/examples.rb` runs this one file with `--vocabulary translations/pt.vocab`, the same as every example under `examples/translations/`.
 
 ## Gotchas
-- `undefined_variable.yara` shows that referencing an undefined variable is a **typecheck-time** error, not a runtime one — Yara's typechecker tracks variable scope itself (see `rust/src/typechecker/CLAUDE.md`), so this never reaches the interpreter.
+- `undefined_variable.yara` shows that referencing an undefined variable is a **typecheck-time** error, not a runtime one — Yara's typechecker tracks variable scope itself (see `ruby/lib/yara/typechecker/CLAUDE.md`), so this never reaches the interpreter.
 - The caret is always a single `^`, not an underline spanning the whole offending token/expression — good enough to point at *where*, not yet at *how wide*. Revisit if imprecise pointing becomes confusing on longer tokens.
 - The `import_type_error` / `import_type_error_helper` pair demonstrates that errors in imported files now render their correct source snippets via `diagnostics::SourceMap` virtual-line resolution — the resolver assigns each imported file a disjoint range of virtual lines, shifts imported AST positions into it, and diagnostics map virtual lines back to (file, local line) during rendering.
 - Fixing the `Debug`-leaking `cannot apply \`Add\`` message (it now reads `cannot apply \`+\``) is exactly the kind of rough edge this folder exists to catch — if you add a new error path, run it for real and paste the actual output here rather than guessing.

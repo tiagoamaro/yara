@@ -113,4 +113,4 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 - [x] 5. Typechecker (2026-09-24)
 - [x] 6. Interpreter (2026-09-24)
 - [x] 7. Vocabulary, CLI, mruby build (2026-09-24)
-- [ ] 8. Retire Rust
+- [x] 8. Retire Rust (2026-09-25)

@@ -1,7 +1,7 @@
 # Portuguese vocabulary translation for Yara.
 # Format: sectioned `canonical = localized` mappings (one per line, `#` starts
 # a comment). Only names listed here change spelling; anything omitted keeps
-# its default English spelling. See rust/src/translations/CLAUDE.md.
+# its default English spelling. See ruby/lib/yara/CLAUDE.md.
 
 [keywords]
 def = funcao

@@ -2,10 +2,10 @@
 # single program, all spelled with the bundled `translations/pt.vocab`.
 #
 # Run with:
-#   cargo run --manifest-path rust/Cargo.toml -- run examples/translations/kitchen_sink_pt.yara \
+#   ruby/bin/yara run examples/translations/kitchen_sink_pt.yara \
 #     --vocabulary translations/pt.vocab
-# ...or just `cargo test` — every example under examples/translations/ is
-# collected and run with the pt Vocabulary automatically.
+# ...or just `make test` in ruby/ — every example under examples/translations/
+# is run with the pt vocabulary automatically.
 #
 # Two deliberate exceptions to full translation:
 #   - `initializer` is a fixed constructor-method name, not a vocab entry, so

@@ -1,6 +1,6 @@
 # Yara — Next Milestones Plan
 
-## Progress (updated 2026-09-22)
+## Progress (updated 2026-09-25)
 
 Done and committed, suite green (215 unit + 11 integration, fmt clean):
 - **Phase 1** — imported-file snippet fix (`diagnostics::SourceMap` virtual lines).
@@ -27,14 +27,15 @@ Done and committed, suite green (215 unit + 11 integration, fmt clean):
 - **Phase 6 step 0** (2026-09-22): repo split into `rust/` (the crate) and `ruby/` (empty); examples, vocabularies, goldens, docs and editors stay at the root as shared fixtures.
 - **Phase 6 steps 1 to 7** (2026-09-22 to 2026-09-24): Rust stdout goldens and the Ruby parity harness, then AST, diagnostics, lexer, parser, resolver, typechecker, interpreter and vocabulary files ported to Ruby, plus the standalone mruby executable; progress per step in `ruby/PLAN.md`.
 
+- **Phase 6 complete** (2026-09-25): `rust/` deleted; Ruby in `ruby/` is the only implementation. CI runs the Ruby tests, builds `ruby/build/yara` on Linux and macOS, and checks every example through it, including in a container without Ruby. Stage docs moved to `ruby/lib/yara/CLAUDE.md` and its `parser/`, `typechecker/` and `interpreter/` folders; `docs/architecture.md` describes the Ruby code. The Rust-specific structure items below (1, 3, 4, 5) are history.
+
 **Next up (in order):**
-1. Structure item 5 (uniform `Span` in error types) — opportunistic.
-2. Message-catalog leftovers: route the ~10 fixed-string messages still built with `.to_string()` through `Vocabulary::msg` (list in `rust/src/translations/CLAUDE.md`), localize lex/parse-stage labels (`main.rs`'s `stage` still uses plain `render`), and grow `translations/pt.vocab`'s `[messages]` beyond its 4 keys.
-3. ~~Promote `kitchen_sink.yara` to also import the pointer examples, plus a `free`-then-`collect` interaction example.~~ **Done** (2026-07-24): `examples/pointers/free_then_collect.yara` added (hand-freed slot not double-counted by a later sweep; second sweep reclaims 0); `kitchen_sink.yara` now imports `pointers/basic`, `pointers/leak`, `pointers/linked_list`. The `collect()` examples stay out of the kitchen sink on purpose — imports splice into one program over one shared heap, so `gc`/`free_then_collect` would reclaim each other's garbage and print counts different from their documented standalone output; and `linked_list`/`circular_list` both declare `class Node`, so only one can be imported.
-4. Phase 6: replace the Rust implementation with Ruby and ship it as a standalone mruby-based executable. Step-by-step plan: `ruby/PLAN.md`.
+1. Message-catalog leftovers: route the fixed-string messages still hardcoded in English (listed in `ruby/lib/yara/CLAUDE.md`) through `Vocabulary#msg`, localize lex/parse-stage labels (`cli.rb` renders those with plain `Diagnostics.render`), and grow `translations/pt.vocab`'s `[messages]` beyond its 4 keys.
+2. Unicode case mapping for `upper`/`lower` under mruby, which changes ASCII letters only; needed once an example relies on it.
+3. Native codegen (LLVM/Cranelift or C transpile), deferred.
 
 Status baseline at plan creation: 88 unit + 3 integration tests green, `cargo fmt` clean, modularization refactor done.
-Execution policy: implement with parallel Haiku sub-agents (thinking OFF), one agent per file/area; main thread (Sonnet) plans, splits work, reviews, and runs `cargo fmt` + `cargo test` gates between phases.
+Gate between phases: `make test` in `ruby/` green, plus `make parity-mruby` for anything that could behave differently under mruby.
 
 ---
 

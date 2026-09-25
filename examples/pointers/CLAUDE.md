@@ -1,11 +1,11 @@
 # examples/pointers/
 
 Manual memory management and garbage collection demos — the teaching payload
-of the `Ptr<T>` feature (see root `CLAUDE.md` and `rust/src/interpreter/CLAUDE.md`
+of the `Ptr<T>` feature (see root `CLAUDE.md` and `ruby/lib/yara/interpreter/CLAUDE.md`
 for the heap/GC mechanics). All run clean via
-`cargo run --manifest-path rust/Cargo.toml -- run examples/pointers/<file>.yara`; the deliberately-failing
+`ruby/bin/yara run examples/pointers/<file>.yara`; the deliberately-failing
 pointer programs (use-after-free, double-free) live in `examples/errors/`
-instead, since everything here must pass `rust/tests/run_examples.rs`.
+instead, since everything here must pass `ruby/test/parity_test.rb`.
 
 ## Files
 

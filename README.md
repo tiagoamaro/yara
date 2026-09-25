@@ -10,7 +10,7 @@ Yara is a learning-focused programming language: strongly typed, compiled, with 
 
 ## Status
 
-Interpreter-first milestone complete and then some: lexer, parser, typechecker, and tree-walk interpreter all working, `yara run <file>` executes real `.yara` programs. Since the initial milestone: unary negation, `if`/`elsif`/`else` as a function's tail expression, file `import`, an `Array` type (`IntArray`/`FloatArray`/`BoolArray`/`StringArray` with indexing and `len`/`push`/`pop`/`get`/`set`), `class` declarations (no inheritance), and configurable keyword translation (`--keywords <path>`). See `CLAUDE.md` for the current project map and each subfolder's `CLAUDE.md` for stage-specific status.
+Lexer, parser, import resolver, typechecker and tree-walk interpreter all work, and `yara run <file>` executes real `.yara` programs. The language has functions with implicit returns, `if`/`elsif`/`else`, `while` and `for` loops, file `import`, arrays (`IntArray`/`FloatArray`/`BoolArray`/`StringArray`), classes with single inheritance, methods on primitive values (`xs.size()`, `2.to_s()`), opt-in pointers with manual `free` and a teaching garbage collector (`collect()`), and full-vocabulary translation. `docs/plan-next-milestones.md` tracks what is next.
 
 ## Syntax preview
 
@@ -49,16 +49,16 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 
 ## Roadmap
 
-1. Lexer
-2. AST + parser
-3. Typechecker
-4. Tree-walk interpreter
-5. Arrays, imports, classes, configurable keyword translation
-6. Later: native compilation (LLVM/Cranelift) or C transpile; class inheritance/static methods; opt-in pointers + a teaching-focused garbage collector — see root `CLAUDE.md` TODO for design sketches
+1. Lexer, parser, typechecker, tree-walk interpreter
+2. Arrays, imports, classes and inheritance, primitive methods
+3. Pointers with manual memory management and a teaching garbage collector
+4. Full-vocabulary translation
+5. A standalone executable built with mruby
+6. Later: native compilation (LLVM/Cranelift or C transpile)
 
 ## Architecture
 
-`docs/architecture.md` walks through the real pipeline (`Lexer` -> `Parser` -> `resolver` -> `TypeChecker` -> `Interpreter`) with Mermaid diagrams and the actual function names involved — written for anyone studying how a small compiler/interpreter is put together. Every function in `rust/src/` also has a `///` doc comment explaining its mechanics, not just its name.
+`docs/architecture.md` walks through the real pipeline (`Lexer` -> `Parser` -> `Resolver` -> `TypeChecker` -> `Interpreter`) with Mermaid diagrams and the actual method names involved, written for anyone studying how a small compiler/interpreter is put together. Yara is implemented in Ruby, in `ruby/lib/yara/`, and every method there has a YARD comment explaining what it does.
 
 ## Examples
 
@@ -67,11 +67,12 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 - `data_structures/` — list, stack, queue, linked list, binary tree, graph (arena-style, built on arrays).
 - `objects/` — `class` usage.
 - `errors/` — deliberately-failing programs showing rendered lex/parse/type/runtime error output, including a recursive call-stack trace.
-- `translations/` — the same `class` example, written with Portuguese keywords (`--keywords translations/pt.keywords`).
+- `pointers/` — manual `alloc`/`free` and the `collect()` garbage collector.
+- `translations/` — programs written entirely in Portuguese (`--vocabulary translations/pt.vocab`).
 
-## Keyword translation
+## Translation
 
-`yara run <file> --keywords <path>` lets `if`/`while`/`class`/etc. be written in another language — see `translations/pt.keywords` and `examples/translations/hello_pt.yara`. Only the fixed set of reserved words translate; type names, identifiers, and error messages stay in English.
+`yara run <file> --vocabulary <path>` lets a program be written in another language: keywords, type names, builtins, primitive methods and error messages all come from the vocabulary file. See `translations/pt.vocab` and `examples/translations/`. Identifiers and string contents are never translated. `--keywords <path>` still works as an older alias.
 
 ## Editor support
 
@@ -79,21 +80,19 @@ Type names have short and long aliases: `Int`/`Integer`, `Bool`/`Boolean`, `Str`
 
 ## Running
 
-The Rust implementation lives in `rust/`; a Ruby rewrite is starting in `ruby/` (see `docs/plan-next-milestones.md`, Phase 6). From the repo root:
+With Ruby 4.0.5 (pinned in `.tool-versions`), from the repo root:
 
 ```
-cargo run --manifest-path rust/Cargo.toml -- run examples/hello.yara
+ruby/bin/yara run examples/hello.yara
 ```
 
-## Running from a release build
+## The standalone executable
 
-`cargo run` rebuilds in debug mode each time. For a standalone binary:
+`make build` in `ruby/` compiles the implementation with mruby into one native executable, `ruby/build/yara`, which runs without Ruby installed:
 
 ```
-cargo build --release --manifest-path rust/Cargo.toml
-./rust/target/release/yara run examples/hello.yara
+cd ruby && make build && cd ..
+ruby/build/yara run examples/hello.yara
 ```
 
-The binary at `rust/target/release/yara` takes the same arguments as `cargo run --`
-(e.g. `yara run <file> --keywords <path>`) and has no runtime dependency on
-Cargo — copy it anywhere and run it directly.
+It takes the same arguments as `ruby/bin/yara` (e.g. `yara run <file> --vocabulary <path>`) and can be copied anywhere with the same operating system and architecture. `ruby/README.md` covers building it, testing it, adding mruby gems and platform builds.

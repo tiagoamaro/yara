@@ -1,45 +1,23 @@
 # ruby/
 
-Ruby implementation of Yara (Phase 6 in `docs/plan-next-milestones.md`), meant to replace `rust/` once it reaches parity and to ship as a standalone mruby executable.
+The Yara implementation. Runs under CRuby (`bin/yara`) for development and ships as a standalone mruby executable (`build/yara`, built by `make build`). `README.md` covers usage, the standalone build, adding mruby gems and platforms.
 
-## Status
-Step 0 done: `bin/yara` (usage error only, matching `rust/src/main.rs`), `lib/yara.rb` load-order manifest, `lib/yara/cli.rb`, `Rakefile`, `test/cli_test.rb`. Step 1 done: `test/parity_test.rb` compares every example with Rust's output (`tests/stdout/`, `tests/golden/`), skipping examples that reach unported stages (`PORTED_STAGES`); `script/capture_rust_stdout.rb` regenerates `tests/stdout/`. Step 2 done:
-- `lib/yara/ast.rb`: one `Struct` per Rust node, members in Rust field order ending in `line, column`; binary operators are symbols (`AST::BINARY_OPERATORS`), unary is `:neg`. `Node#shift_lines` walks every member generically, so a new node type needs no extra shifting code.
-- `lib/yara/diagnostics.rb`: `Span`, `Frame`, `SourceMap`, `render`/`render_with_map` (optional vocabulary, anything with `msg(key, args)`), `render_snippet`, and `Error`, the base class every stage's error subclasses with its own `kind`. `source_lines` reproduces Rust's `str::lines` so snippets and line counts stay byte-identical.
-- `lib/yara/environment.rb`: the scope stack; `lookup` returns nil when unbound, so use `bound?` where a bound value can be nil.
+## Layout
+- `lib/yara.rb`: the load-order manifest, the only file allowed to `require`. `rake build` compiles the same list with `mrbc`, so a new file must be added here in dependency order.
+- `lib/yara/`: the pipeline; see `lib/yara/CLAUDE.md` and the `CLAUDE.md` in `parser/`, `typechecker/` and `interpreter/`.
+- `bin/yara`: CRuby entry point, `exit(Yara::CLI.run(ARGV))`.
+- `mruby/`: `build_config.rb` (the default gembox plus `MRB_UTF8_STRING`, so strings are characters, not bytes), `main.rb` (compiled last; stores the exit status in `$yara_status`) and `yara.c` (the launcher: sets `ARGV`, loads the embedded bytecode, returns the status). `build_config.rb.lock` is written by the mruby build and committed.
+- `Rakefile`: `rake test`, and `rake build` (downloads mruby 4.0.0 into `build/`, builds it, compiles and links `build/yara`).
+- `test/`: minitest, one file per stage; `parity_test.rb` runs every example through `bin/yara`, or through `YARA_BINARY` (`make parity-mruby`). `support/examples.rb` decides which examples get `--vocabulary translations/pt.vocab`.
+- `script/capture_output.rb`: records `bin/yara`'s output as the expected output (`make capture`). `script/parity.sh`: the per-example comparison in plain shell, used by CI on a machine without Ruby.
+- `PLAN.md`: the Ruby rewrite plan (Phase 6), the mruby-compatible Ruby subset, and the parity traps (places where plain Ruby differs from Yara's defined behavior).
 
-Step 3 done:
-- `lib/yara/lexer.rb`: `Token` (`kind` symbol plus `value`), `LexError`, `Lexer`. `Lexer.describe(token)` prints a token as Rust's `TokenKind` display does (`Ident("x")`, `Float(5.0)`), which parse errors embed. Non-ASCII letters count as identifier characters, a simplification of Rust's Unicode table marked `ponytail:`.
-- `lib/yara/parser.rb` plus `parser/statements.rb` and `parser/expressions.rb` (reopening `Parser`), with `ParseError`.
-- `lib/yara/messages.rb`: the 128-key English catalog, generated from `rust/src/translations/messages.rs`, and `Messages.substitute`.
-- `lib/yara/translations.rb`: `Vocabulary` with `english`, `keywords`, `canonical_type` and `msg`; the file parser comes in step 7.
-- `lib/yara/rust_format.rb`: Rust's `{}`/`{:?}` for floats and `{:?}` for strings, checked against real Rust output.
-- `lib/yara/cli.rb` runs lex and parse and renders their errors; `PORTED_STAGES` includes both stages.
+## Rules
+- Stay within the Ruby subset in `PLAN.md`: no `Regexp`, `Set`, `StringScanner` and so on, and nothing CRuby and mruby disagree on without a test covering both. When in doubt, run `make parity-mruby`.
+- Never use `Float#to_s` or `String#to_f` for Yara values; go through `RustFormat`, since mruby's float conversions are inexact.
+- Every method gets a YARD comment; no endless methods.
 
-Step 4 done:
-- `lib/yara/resolver.rb`: `ResolveError` and `Resolver.resolve_imports`, mirroring `rust/src/resolver/`. `import_path` reproduces Rust's `Path::join` spelling (no `./` for a bare entry file name), since the path shows up in messages and `-->` lines. `File.realpath` stands in for `canonicalize`; OS errors print via `CLI.os_error`. Like Rust, importing the same file twice anywhere in a run is a cycle error.
-- `cli.rb` now resolves imports and renders their errors through the `SourceMap`; `PORTED_STAGES` includes `import error`. No example has an import-error golden, so `test/resolver_test.rb` covers the messages; they were also checked byte-identical against the Rust binary.
-
-Step 5 done:
-- `lib/yara/typechecker.rb`: `Type` (a `Data` with `kind` and `inner`; `accepts?` is Rust's `assignable`), `TypeError`, and `TypeChecker` with `check_program`; `typechecker/expressions.rb`, `statements.rb`, `calls.rb`, `classes.rb` and `methods.rb` reopen it, mirroring the Rust split.
-- `lib/yara/builtins.rb` and `lib/yara/methods.rb`: the arity registries. Each stage dispatches by name with `send` (`check_builtin_<name>`, `check_<kind>_<name>`); primitive methods whose result depends only on the receiver sit in `TypeChecker::FIXED_RESULTS` instead.
-- `Vocabulary` gained `canonical_builtin`, `canonical_method`, `type_name` and `localized_method_names`, identity for English.
-- An inheritance cycle is reported at the first of its classes reached in declaration order; Rust's choice depends on `HashMap` order and changes between runs.
-- `cli.rb` typechecks after resolving; `PORTED_STAGES` includes `type error`. Error messages were diffed against the Rust binary over the unit-test sources.
-
-Step 6 done:
-- `lib/yara/interpreter.rb`: `Instance`, `Pointer`, `RuntimeError` (frames from the call stack) and `Interpreter`; `interpreter/expressions.rb`, `statements.rb`, `calls.rb`, `classes.rb` and `methods.rb` reopen it. Yara values are plain Ruby values (`Array` shares by reference, as Rust's `Rc<RefCell<Vec>>` does); `Interpreter.display` is Rust's `Display`, with floats through `RustFormat`.
-- `return` unwinds as a `Return` value handed back through `exec_statement`, like Rust's `Flow`. Heap slots are one-element arrays, nil once freed.
-- Integer results are checked against the i64 bounds (`checked_integer`); `/` truncates toward zero. `String#to_i`/`to_f` validate by hand to match Rust's `parse`, and `Float#to_i` saturates like `as i64`.
-- `cli.rb` runs the whole pipeline and exits 0 on success; `PORTED_STAGES` lists every stage.
-
-Step 7 done:
-- `Vocabulary.parse` (`translations.rb`) reads the sectioned vocabulary file, raising `TranslationError`; `english` seeds every name map with identity entries as Rust does, which the "already used" check depends on. `cli.rb` takes `--vocabulary`/`--keywords` and renders a vocabulary error against the vocabulary file.
-- `rake build` downloads mruby 4.0.0 into `build/`, builds it with `mruby/build_config.rb`, compiles the `lib/yara.rb` load order plus `mruby/main.rb` with `mrbc`, and links `mruby/yara.c` into `build/yara`. The exit status comes back through `$yara_status`, so no `mruby-exit` gem is needed.
-- `YARA_BINARY=build/yara` points `test/parity_test.rb` at another executable (`make parity-mruby`); `script/parity.sh` does the same comparison in plain shell. CI runs the Ruby tests, builds, then runs `script/parity.sh` in a Ruby-free container.
-- mruby's float I/O is inexact, so `RustFormat.parse_float`/`shortest_digits` use exact integer arithmetic; mruby's unary minus drops the sign of `0.0`, so float negation multiplies by -1.0. Non-ASCII `upper`/`lower` still differ under mruby.
-
-Run `make test` from `ruby/` (or `make parity`, `make capture`, `make run FILE=examples/hello.yara`; see `Makefile`). Follow `PLAN.md` (steps, gates, parity traps, progress checklist). Ruby version comes from the repo-root `.tool-versions`. `rust/` stays the executable specification until the parity gate passes.
-
-## Parity target
-Same shared fixtures as `rust/`, read from the repo root: `examples/` must run clean, stdout must match `tests/stdout/<path under examples>.stdout`, each `examples/errors/*` must render byte-identical to `tests/golden/<name>.stderr`, and `translations/pt.vocab` must load.
+## Checks
+- `make test`: every minitest test, parity included.
+- `make parity-mruby`: rebuilds `build/yara` and runs the parity test through it.
+- CI (`.github/workflows/ci.yml`): tests, build and parity through the executable on Linux and macOS, then `script/parity.sh` in a Ruby-free Ubuntu container.
