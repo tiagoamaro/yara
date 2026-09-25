@@ -58,7 +58,8 @@ module Yara
     def eval_negation(expr)
       value = eval_expr(expr.expr)
       return checked_integer(-value, "-", expr.line, expr.column) if value.is_a?(Integer)
-      return -value if value.is_a?(Float)
+      # mruby's unary minus gives 0.0 for 0.0, not -0.0; multiplying by -1.0 flips the sign exactly.
+      return value * -1.0 if value.is_a?(Float)
 
       runtime_error_msg("runtime/cannot-negate", [display(value)], expr.line, expr.column)
     end

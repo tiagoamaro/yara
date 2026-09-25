@@ -22,3 +22,38 @@ jobs:
         run: cargo fmt --check
       - name: Run tests
         run: cargo test
+
+  ruby:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ruby
+    steps:
+      - uses: actions/checkout@v4
+      # Reads the Ruby version from the repo-root .tool-versions.
+      - uses: ruby/setup-ruby@v1
+      - name: Run tests
+        run: rake test
+      - name: Build the mruby executable
+        run: rake build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yara-mruby
+          path: ruby/build/yara
+
+  mruby-standalone:
+    needs: ruby
+    runs-on: ubuntu-latest
+    # A bare image with no Ruby, so the executable has to stand alone.
+    container: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: yara-mruby
+          path: ruby/build
+      - name: Compare every example with the Rust output
+        run: |
+          if command -v ruby; then echo "Ruby is installed; this job must run without it"; exit 1; fi
+          chmod +x ruby/build/yara
+          ruby/script/parity.sh ruby/build/yara

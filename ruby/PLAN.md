@@ -50,12 +50,14 @@ File names use full words, matching the Rust side. Every method gets a YARD comm
 
 | Behavior | Rust today | Plain Ruby | Plan |
 |---|---|---|---|
-| Printing a Float | `5`, `0.30000000000000004`, `100000000000000000000` | CRuby: `5.0`, `0.30000000000000004`, `1.0e+20`; mruby: `5.0`, `0.3` (fewer digits), `1.0e+20` | `RustFormat.float_display`/`float_debug` (step 3) rebuild Rust's `{}`/`{:?}` from the shortest `%e` precision that round-trips; never use `Float#to_s`, since CRuby and mruby disagree too |
+| Printing a Float | `5`, `0.30000000000000004`, `100000000000000000000` | CRuby: `5.0`, `0.30000000000000004`, `1.0e+20`; mruby: `5.0`, `0.3` (fewer digits), `1.0e+20` | `RustFormat.float_display`/`float_debug` rebuild Rust's `{}`/`{:?}` from the shortest digits that round-trip; never use `Float#to_s`, since CRuby and mruby disagree too |
+| Reading and writing float digits | exact (`str::parse`, shortest round-trip printing) | CRuby is exact; mruby's `String#to_f` can be one bit off and its `%e` prints zeros past about 17 digits | `RustFormat.parse_float` and `shortest_digits` work in exact integer arithmetic (`Math.frexp`/`ldexp` plus bigint), used by the lexer, `String#to_f` and float printing |
+| Negating `0.0` | `-0.0`, printed `-0` | mruby's unary minus gives `0.0` | Negate floats as `value * -1.0` |
 | Integer overflow | panics in debug builds, wraps in release builds; no example covers it | becomes a Bignum (CRuby and mruby, which bundles `mruby-bigint`) | Raise a runtime error ("integer overflow in `+`", and so on) at the i64 bounds in `+ - * /`, unary `-` and `abs()`; unit-tested in Ruby only, since there is no Rust behavior to match. `Float#to_i()` saturates and maps NaN to 0 instead, because Rust's `as i64` defines that |
 | Integer `/` with negative operands | truncates (`-7 / 2 = -3`) | floors (`-4`) in both runtimes | Truncate by hand: `(a.abs / b.abs) * sign` |
 | `"12abc".to_i()` | runtime error "cannot parse" | `12` | Validate digits by hand, raise the same message |
 | Which class an inheritance cycle names | whichever `HashMap` iteration reaches first, different between runs | Hash order is insertion order | Name the first cycle member reached in declaration order; no golden covers it |
-| `trim`, `upper`, `lower` | Unicode whitespace and case rules | CRuby is Unicode-aware; mruby changes ASCII only (`"É".downcase` stays `É`) | Match Rust for ASCII, note the gap for non-ASCII |
+| `trim`, `upper`, `lower` | Unicode whitespace and case rules | CRuby is Unicode-aware; mruby changes ASCII only (`"É".downcase` stays `É`) | Match Rust for ASCII; non-ASCII case mapping differs in the mruby build, and no example covers it |
 
 ## Steps
 
@@ -110,5 +112,5 @@ Values, environments, calls with the call-stack trace, classes, primitive method
 - [x] 4. Resolver (2026-09-24)
 - [x] 5. Typechecker (2026-09-24)
 - [x] 6. Interpreter (2026-09-24)
-- [ ] 7. Vocabulary, CLI, mruby build
+- [x] 7. Vocabulary, CLI, mruby build (2026-09-24; the no-Ruby CI job has not run yet)
 - [ ] 8. Retire Rust

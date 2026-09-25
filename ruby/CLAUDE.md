@@ -31,7 +31,13 @@ Step 6 done:
 - `lib/yara/interpreter.rb`: `Instance`, `Pointer`, `RuntimeError` (frames from the call stack) and `Interpreter`; `interpreter/expressions.rb`, `statements.rb`, `calls.rb`, `classes.rb` and `methods.rb` reopen it. Yara values are plain Ruby values (`Array` shares by reference, as Rust's `Rc<RefCell<Vec>>` does); `Interpreter.display` is Rust's `Display`, with floats through `RustFormat`.
 - `return` unwinds as a `Return` value handed back through `exec_statement`, like Rust's `Flow`. Heap slots are one-element arrays, nil once freed.
 - Integer results are checked against the i64 bounds (`checked_integer`); `/` truncates toward zero. `String#to_i`/`to_f` validate by hand to match Rust's `parse`, and `Float#to_i` saturates like `as i64`.
-- `cli.rb` runs the whole pipeline and exits 0 on success; `PORTED_STAGES` lists every stage. The parity test skips the Portuguese-vocabulary examples until step 7 adds the vocabulary file parser.
+- `cli.rb` runs the whole pipeline and exits 0 on success; `PORTED_STAGES` lists every stage.
+
+Step 7 done:
+- `Vocabulary.parse` (`translations.rb`) reads the sectioned vocabulary file, raising `TranslationError`; `english` seeds every name map with identity entries as Rust does, which the "already used" check depends on. `cli.rb` takes `--vocabulary`/`--keywords` and renders a vocabulary error against the vocabulary file.
+- `rake build` downloads mruby 4.0.0 into `build/`, builds it with `mruby/build_config.rb`, compiles the `lib/yara.rb` load order plus `mruby/main.rb` with `mrbc`, and links `mruby/yara.c` into `build/yara`. The exit status comes back through `$yara_status`, so no `mruby-exit` gem is needed.
+- `YARA_BINARY=build/yara` points `test/parity_test.rb` at another executable (`make parity-mruby`); `script/parity.sh` does the same comparison in plain shell. CI runs the Ruby tests, builds, then runs `script/parity.sh` in a Ruby-free container.
+- mruby's float I/O is inexact, so `RustFormat.parse_float`/`shortest_digits` use exact integer arithmetic; mruby's unary minus drops the sign of `0.0`, so float negation multiplies by -1.0. Non-ASCII `upper`/`lower` still differ under mruby.
 
 Run `make test` from `ruby/` (or `make parity`, `make capture`, `make run FILE=examples/hello.yara`; see `Makefile`). Follow `PLAN.md` (steps, gates, parity traps, progress checklist). Ruby version comes from the repo-root `.tool-versions`. `rust/` stays the executable specification until the parity gate passes.
 

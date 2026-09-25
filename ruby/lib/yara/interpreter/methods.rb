@@ -116,13 +116,13 @@ module Yara
       when "nan" then return Float::NAN
       end
       decimal = decimal_float(body)
-      return sign * decimal.to_f if decimal
+      return sign * RustFormat.parse_float(decimal) if decimal
 
       runtime_error_msg("runtime/cannot-parse-as-float", [string], line, column)
     end
 
-    # Digits with an optional point and exponent, respelled so `String#to_f`
-    # reads every form Rust accepts (`5.`, `.5`, `1.e5`).
+    # Digits with an optional point and exponent, respelled with both sides
+    # of the point present (`5.` as `5.0`, `.5` as `0.5`).
     #
     # @param text [String] without a sign
     # @return [String, nil] nil when `text` is not such a number

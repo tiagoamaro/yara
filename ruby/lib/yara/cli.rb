@@ -1,6 +1,7 @@
 module Yara
   # Command-line entry point, mirroring `rust/src/main.rs`: only
-  # `yara run <file> [--vocabulary <path>]` is supported.
+  # `yara run <file> [--vocabulary <path>]` is supported, with `--keywords`
+  # as an older alias for `--vocabulary`.
   module CLI
     USAGE = "usage: yara run <file> [--vocabulary <path>]"
 
@@ -15,16 +16,18 @@ module Yara
         return 1
       end
 
-      run_file(argv[1], stderr)
+      flag = argv[2..].index { |arg| arg == "--vocabulary" || arg == "--keywords" }
+      run_file(argv[1], flag && argv[flag + 3], stderr)
     end
 
     # Runs the ported pipeline stages over one file, rendering the first
     # error rustc-style.
     #
     # @param path [String]
+    # @param vocabulary_path [String, nil] a vocabulary file, else English
     # @param stderr [IO]
     # @return [Integer] exit status
-    def self.run_file(path, stderr)
+    def self.run_file(path, vocabulary_path, stderr)
       begin
         source = File.read(path)
       rescue SystemCallError => e
@@ -32,7 +35,9 @@ module Yara
         return 1
       end
 
-      vocabulary = Vocabulary.english
+      vocabulary = load_vocabulary(vocabulary_path, stderr)
+      return 1 unless vocabulary
+
       begin
         tokens = Lexer.new(source, vocabulary).tokenize
         program = Parser.new(tokens, vocabulary).parse_program
@@ -51,6 +56,27 @@ module Yara
         return 1
       end
       0
+    end
+
+    # Reads and parses the vocabulary file, rendering any error against the
+    # file itself.
+    #
+    # @param path [String, nil]
+    # @param stderr [IO]
+    # @return [Vocabulary, nil] nil after reporting an error
+    def self.load_vocabulary(path, stderr)
+      return Vocabulary.english if path.nil?
+
+      begin
+        text = File.read(path)
+      rescue SystemCallError => e
+        stderr.puts("error: cannot read `#{path}`: #{os_error(e)}")
+        return nil
+      end
+      Vocabulary.parse(text)
+    rescue TranslationError => e
+      stderr.print(Diagnostics.render(e, path, text))
+      nil
     end
 
     # A system error spelled the way Rust's `io::Error` prints it:

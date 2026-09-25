@@ -162,7 +162,7 @@ module Yara
         advance while ascii_digit?(peek)
       end
       text = @chars[start...@position].join
-      return [:float, text.to_f] if is_float
+      return [:float, RustFormat.parse_float(text)] if is_float
 
       value = text.to_i
       raise error("lex/invalid-integer-literal", [text], line, column) if value > I64_MAX
